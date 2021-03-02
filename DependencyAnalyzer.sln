@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.31019.35
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SDILReaderTest", "SDILReaderTest\SDILReaderTest.csproj", "{FCEF390B-AD33-424B-A0BA-DA668CDBAD52}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DependencyAnalyzer", "DependencyAnalyzer\DependencyAnalyzer.csproj", "{4CBE89F9-40D6-45D2-B168-89E3ED565C09}"
 EndProject
 Global
@@ -13,10 +11,6 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{FCEF390B-AD33-424B-A0BA-DA668CDBAD52}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FCEF390B-AD33-424B-A0BA-DA668CDBAD52}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FCEF390B-AD33-424B-A0BA-DA668CDBAD52}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FCEF390B-AD33-424B-A0BA-DA668CDBAD52}.Release|Any CPU.Build.0 = Release|Any CPU
 		{4CBE89F9-40D6-45D2-B168-89E3ED565C09}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{4CBE89F9-40D6-45D2-B168-89E3ED565C09}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4CBE89F9-40D6-45D2-B168-89E3ED565C09}.Release|Any CPU.ActiveCfg = Release|Any CPU
