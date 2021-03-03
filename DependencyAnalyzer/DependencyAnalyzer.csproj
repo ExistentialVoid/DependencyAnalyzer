@@ -7,8 +7,8 @@
     <ProjectGuid>{4CBE89F9-40D6-45D2-B168-89E3ED565C09}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>SDILReader</RootNamespace>
-    <AssemblyName>SDILReader</AssemblyName>
+    <RootNamespace>DependencyAnalyzer</RootNamespace>
+    <AssemblyName>DependencyAnalyzer</AssemblyName>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
     <UpgradeBackupLocation>
