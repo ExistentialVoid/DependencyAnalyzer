@@ -12,8 +12,8 @@ namespace DependencyAnalyzer
         public OpCode Code { get => code; set => code = value; }
         private object operand;
         public object Operand { get => operand; set => operand = value; }
-        private int offset;
-        public int Offset { get => offset; set => offset = value; }
+        private int ilArrPos;
+        public int ILArrayPos { get => ilArrPos; set => ilArrPos = value; }
 
         public ILInstruction() { }
 
@@ -24,7 +24,7 @@ namespace DependencyAnalyzer
         public string GetCode(bool includeILByte)
         {
             string result = "";
-            result += includeILByte ? $"{GetExpandedOffset(Offset)} : " : "" + Code.ToString();
+            result += includeILByte ? $"{GetExpandedOffset(ILArrayPos)} : " : "" + Code.ToString();
             if (Operand != null)
             {
                 switch (Code.OperandType)

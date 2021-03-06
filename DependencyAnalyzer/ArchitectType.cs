@@ -16,7 +16,7 @@ namespace DependencyAnalyzer
         internal readonly Architect.ArchType Type;
         internal List<ArchitectMember> Members;
         internal List<Type> Interfaces;
-        private BindingFlags standard = BindingFlags.Public | BindingFlags.DeclaredOnly 
+        private readonly BindingFlags standard = BindingFlags.Public | BindingFlags.DeclaredOnly 
             | BindingFlags.Instance | BindingFlags.Static;
 
         internal ArchitectType(Architecture architecture, Type cls)

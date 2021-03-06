@@ -8,7 +8,7 @@ namespace DependencyAnalyzer
 {
     public class Architecture
     {
-        private List<ArchitectType> ObjectSystem;
+        private readonly List<ArchitectType> ObjectSystem;
 
         /// <summary>
         /// Create an Architecture with determinent properties

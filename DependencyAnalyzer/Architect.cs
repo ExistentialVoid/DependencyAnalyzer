@@ -24,20 +24,23 @@ namespace DependencyAnalyzer
         internal static OpCode[] multiByteOpCodes;
         internal static OpCode[] singleByteOpCodes;
 
+        /// <summary>
+        /// Arrange OpCodes by their Value from their enum listing into single-/multi-ByteOpCodes globals.
+        /// </summary>
         public static void LoadOpCodes()
         {
             singleByteOpCodes = new OpCode[256];
             multiByteOpCodes = new OpCode[256];
-            typeof(OpCodes).GetFields().ToList().FindAll(f => f.FieldType == typeof(OpCode)).ForEach(f =>
+            typeof(OpCodes).GetFields().ToList().FindAll(f => f.FieldType == typeof(OpCode)).ForEach(c =>
             {
-                OpCode code1 = (OpCode)f.GetValue(null);
-                ushort num2 = (ushort)code1.Value;
-                if (num2 < 256)
-                    singleByteOpCodes[num2] = code1;
-                else if ((num2 & 65280) != 65024)
+                OpCode code = (OpCode)c.GetValue(null);
+                ushort val = (ushort)code.Value;
+                if (val <= 0xff)
+                    singleByteOpCodes[val] = code;
+                else if ((val & 0xff00) != 0xfe00)
                     throw new Exception("Invalid OpCode.");
                 else
-                    multiByteOpCodes[num2 & 255] = code1;
+                    multiByteOpCodes[val & 0xff] = code;
             });
         }
 
