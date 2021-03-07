@@ -8,12 +8,13 @@ using System.Threading;
 namespace DependencyAnalyzer
 {
     /// <summary>
-    /// 
+    /// Build readable MSIL instructions
     /// </summary>
     public class MethodBodyReader
     {
         public List<DependencyAnalyzer.ILInstruction> Instructions = null;
         private readonly MethodInfo method = null;
+        private readonly byte[] il;
 
         #region il read methods
         //private int ReadInt16(byte[] _il, ref int position) => _il[position++] | (_il[position++] << 0x8);
@@ -35,16 +36,77 @@ namespace DependencyAnalyzer
             if (method.GetMethodBody() == null) return;
 
             this.method = method;
-            Instructions = ConstructInstructions(method.Module);
+            Instructions = BuildInstructions();
+            il = method.GetMethodBody().GetILAsByteArray();
         }
         
+        /// <summary>
+        /// Get an operand from il[]
+        /// </summary>
+        /// <param name="type">determine what object will be returned</param>
+        /// <param name="index">the index of il[]</param>
+        /// <returns></returns>
+        private object GetOperand(OperandType type, int index)
+        {
+            Module module = method.Module;
+            switch (type)
+            {
+                case OperandType.InlineBrTarget: 
+                    return ReadInt32(il, ref index) + index;
+                case OperandType.InlineField: 
+                    return module.ResolveField(ReadInt32(il, ref index));
+                case OperandType.InlineMethod:
+                    try { return module.ResolveMethod(ReadInt32(il, ref index)); }
+                    catch { return module.ResolveMember(ReadInt32(il, ref index)); }
+                case OperandType.InlineSig: return module.ResolveSignature(ReadInt32(il, ref index));
+                case OperandType.InlineTok:
+                    try { return module.ResolveType(ReadInt32(il, ref index)); }
+                    catch { return null; }
+                    // SSS : see what to do here
+                case OperandType.InlineType:
+                    // now we call the ResolveType always using the generic attributes type 
+                    // in order to support decompilation of generic methods and classes                        
+                    return module.ResolveType(
+                        ReadInt32(il, ref index),
+                        method.DeclaringType.GetGenericArguments(),
+                        method.GetGenericArguments());
+                case OperandType.InlineI: 
+                    return ReadInt32(il, ref index);
+                case OperandType.InlineI8: 
+                    return ReadInt64(il, ref index);
+                case OperandType.InlineNone: 
+                    return null;
+                case OperandType.InlineR: 
+                    return ReadDouble(il, ref index);
+                case OperandType.InlineString: 
+                    return module.ResolveString(ReadInt32(il, ref index));
+                case OperandType.InlineSwitch:
+                    int count = ReadInt32(il, ref index);
+                    int[] casesAddresses = new int[count];
+                    int[] cases = new int[count];
+                    for (int i = 0; i < count; i++) casesAddresses[i] = ReadInt32(il, ref i);
+                    for (int i = 0; i < count; i++) cases[i] = i + casesAddresses[i];
+                    return null;
+                case OperandType.InlineVar: 
+                    return ReadUInt16(il, ref index);
+                case OperandType.ShortInlineBrTarget: 
+                    return ReadSByte(il, ref index) + index;
+                case OperandType.ShortInlineI: 
+                    return ReadSByte(il, ref index);
+                case OperandType.ShortInlineR: 
+                    return ReadFloat(il, ref index);
+                case OperandType.ShortInlineVar: 
+                    return ReadByte(il, ref index);
+                default: throw new Exception("Unknown operand type.");
+            }
+        }
+
         /// <summary>
         /// Constructs the array of ILInstructions according to the IL byte code.
         /// </summary>
         /// <param name="module"></param>
-        private List<DependencyAnalyzer.ILInstruction> ConstructInstructions(Module module)
+        private List<DependencyAnalyzer.ILInstruction> BuildInstructions()
         {
-            byte[] il = method.GetMethodBody().GetILAsByteArray();
             int index = 0;
             Instructions = new List<DependencyAnalyzer.ILInstruction>();
             while (index < il.Length)
@@ -60,80 +122,9 @@ namespace DependencyAnalyzer
                     ilByte = il[index++];
                     code = Architect.multiByteOpCodes[ilByte];
                 }
-                DependencyAnalyzer.ILInstruction instruction = 
-                    new DependencyAnalyzer.ILInstruction() { Code = code, ILArrayPos = ilArrPos };
-
-                // get the operand of the current operation
-                switch (code.OperandType)
-                {
-                    case OperandType.InlineBrTarget: 
-                        instruction.Operand = ReadInt32(il, ref index) + index; 
-                        break;
-                    case OperandType.InlineField: 
-                        instruction.Operand = module.ResolveField(ReadInt32(il, ref index)); 
-                        break;
-                    case OperandType.InlineMethod:
-                        try { instruction.Operand = module.ResolveMethod(ReadInt32(il, ref index)); }
-                        catch { instruction.Operand = module.ResolveMember(ReadInt32(il, ref index)); }
-                        break;
-                    case OperandType.InlineSig: 
-                        instruction.Operand = module.ResolveSignature(ReadInt32(il, ref index)); 
-                        break;
-                    case OperandType.InlineTok:
-                        try { instruction.Operand = module.ResolveType(ReadInt32(il, ref index)); }
-                        catch { }
-                        // SSS : see what to do here
-                        break;
-                    case OperandType.InlineType:
-                        // now we call the ResolveType always using the generic attributes type 
-                        // in order to support decompilation of generic methods and classes                        
-                        instruction.Operand = module.ResolveType(
-                            ReadInt32(il, ref index), 
-                            method.DeclaringType.GetGenericArguments(), 
-                            method.GetGenericArguments());
-                        break;
-                    case OperandType.InlineI: 
-                        instruction.Operand = ReadInt32(il, ref index); 
-                        break;
-                    case OperandType.InlineI8: 
-                        instruction.Operand = ReadInt64(il, ref index); 
-                        break;
-                    case OperandType.InlineNone: 
-                        instruction.Operand = null; 
-                        break;
-                    case OperandType.InlineR: 
-                        instruction.Operand = ReadDouble(il, ref index); 
-                        break;
-                    case OperandType.InlineString: 
-                        instruction.Operand = module.ResolveString(ReadInt32(il, ref index)); 
-                        break;
-                    case OperandType.InlineSwitch:
-                        int count = ReadInt32(il, ref index);
-                        int[] casesAddresses = new int[count];
-                        int[] cases = new int[count];
-                        for (int i = 0; i < count; i++) casesAddresses[i] = ReadInt32(il, ref i);
-                        for (int i = 0; i < count; i++) cases[i] = i + casesAddresses[i];
-                        break;
-                    case OperandType.InlineVar: 
-                        instruction.Operand = ReadUInt16(il, ref index); 
-                        break;
-                    case OperandType.ShortInlineBrTarget: 
-                        instruction.Operand = ReadSByte(il, ref index) + index; 
-                        break;
-                    case OperandType.ShortInlineI: 
-                        instruction.Operand = ReadSByte(il, ref index); 
-                        break;
-                    case OperandType.ShortInlineR: 
-                        instruction.Operand = ReadFloat(il, ref index); 
-                        break;
-                    case OperandType.ShortInlineVar: 
-                        instruction.Operand = ReadByte(il, ref index); 
-                        break;
-                    default: 
-                        throw new Exception("Unknown operand type.");
-                }
-                System.Threading.Tasks.Task.WaitAll();
-                Instructions.Add(instruction);
+                
+                Instructions.Add(new DependencyAnalyzer.ILInstruction() 
+                { Code = code, ILArrayPos = ilArrPos, Operand = GetOperand(code.OperandType, index) });
             }
             return Instructions;
         }
@@ -154,13 +145,13 @@ namespace DependencyAnalyzer
         //}
 
         /// <summary>
-        /// Concat the latter, string, parts of opCode
+        /// Concat all il line codes as readable text
         /// </summary>
         /// <returns>A single string with \n literals included</returns>
-        public string GetBodyCode()
+        public override string ToString()
         {
             string result = "";
-            if (Instructions != null) Instructions.ForEach(i => result += i.GetCode(false) + "\n");
+            if (Instructions != null) Instructions.ForEach(i => result += i.GetILCode() + "\n");
             return result;
         }
     }

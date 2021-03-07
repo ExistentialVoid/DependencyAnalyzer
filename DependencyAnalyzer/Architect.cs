@@ -86,7 +86,7 @@ namespace DependencyAnalyzer
             try
             {
                 MethodBodyReader reader = new MethodBodyReader(method);
-                string methodbody = reader.GetBodyCode();
+                string methodbody = reader.ToString();
                 if (methodbody.Contains(member.Member.Name)) return true;
             }
             catch
