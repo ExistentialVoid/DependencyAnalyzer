@@ -2,7 +2,7 @@
 
 An easy-to-use, adjustable, dependency viewer. Internally, all dependencies are mapped between members of a set of filtered classes.
 The list of dependencies are further reduced to scope to user-controlled variables. The final collection of dependencies are available in the read only list of immutable record
-ReferenceInfo(MemberInfo ReferencingMember, MemberInfo ReferencedMember). The ToString method on this record reads <Memb1ClassName>.<Memb1Name> -> <Memb2ClassName>.<Memb2Name>.
+ReferenceInfo(MemberInfo ReferencingMember, MemberInfo ReferencedMember). The ToString method on this record reads Memb1ClassName.Memb1Name -> Memb2ClassName.Memb2Name.
 
 To use:
     1) Instantiate primary class Architecture with the parameter Type[] classes
