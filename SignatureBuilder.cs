@@ -2,7 +2,7 @@
 using System.Reflection;
 using System.Text;
 
-namespace SelfReferencing
+namespace DependencyAnalyzer
 {
     internal sealed class SignatureBuilder
     {

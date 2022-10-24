@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-namespace SelfReferencing
+namespace DependencyAnalyzer
 {
     /// <summary>
     /// Couples a member with other members the it references and that reference it

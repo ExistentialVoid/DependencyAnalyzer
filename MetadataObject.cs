@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 
-namespace SelfReferencing
+namespace DependencyAnalyzer
 {
     /// <summary>
     /// Build readable MSIL instructions

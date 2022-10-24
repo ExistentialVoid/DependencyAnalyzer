@@ -1,6 +1,6 @@
 ﻿using System.Reflection.Emit;
 
-namespace SelfReferencing
+namespace DependencyAnalyzer
 {
     /// <summary>
     /// Individual section of IL bytes representing the IL instruction
