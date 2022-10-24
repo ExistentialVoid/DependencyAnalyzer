@@ -1,6 +1,6 @@
 ﻿using System.Reflection.Emit;
 
-namespace DependencyAnalyzer
+namespace SelfReferencing
 {
     /// <summary>
     /// Individual section of IL bytes representing the IL instruction
@@ -31,6 +31,6 @@ namespace DependencyAnalyzer
         /// Returns a friendly string representation of this instruction
         /// </summary>
         /// <returns></returns>
-        public new string ToString() => $"{Position.SetSizeStr(4)} : {Code} {Operand}";
+        public override string ToString() => $"{Position,4} : {Code} {Operand}";
     }
 }
