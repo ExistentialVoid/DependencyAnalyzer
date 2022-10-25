@@ -8,7 +8,7 @@ namespace DependencyAnalyzer
 {
     public class Architecture
     {
-        internal static BindingFlags Filter { get; } = BindingFlags.Public | BindingFlags.NonPublic
+        public static BindingFlags Filter { get; } = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         private List<MemberReferenceInfo> FlattenedReferenceMembers
         {
@@ -194,9 +194,9 @@ namespace DependencyAnalyzer
             // 173 : ldloc.1
             // 174 : stloc.s 5
             // 176 : br.s -78
-            string info = builder.ToString();
-            if (NamespaceCount == 1) info = info.Replace($"{_referenceTypes[0].Class.Namespace}.", string.Empty);
-            return info;
+            string results = builder.ToString();
+            if (NamespaceCount == 1) results = results.Replace($"{_referenceTypes[0].Class.Namespace}.", string.Empty);
+            return results;
             // 178 : ldloc.s 5
             // 180 : ret
         }

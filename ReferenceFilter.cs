@@ -30,8 +30,12 @@ namespace DependencyAnalyzer
             {
                 if (Filter.HasFlag(ReferenceBindingFlags.NonCompiler) && member.IsCompilerGenerated) continue;
 
+                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) && 
+                    member.ReferencedMembers.Count + member.ReferencingMembers.Count == 0) continue;
+
                 if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) &&
-                    (member.ReferencedMembers.Count + member.ReferencingMembers.Count == 0)) continue;
+                    (member.ReferencedMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count
+                    + member.ReferencingMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count == 0)) continue;
 
                 if (member.Member.DeclaringType != null)
                 {
