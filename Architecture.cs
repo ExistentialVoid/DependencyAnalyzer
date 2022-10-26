@@ -87,20 +87,30 @@ namespace DependencyAnalyzer
                     ReportFormat.Detailed => mri.ToString(),
                     ReportFormat.Signature => mri.Signature,
                     _ => mri.Member.ToString() };
-                builder.Append($"\n{indents}{header}");
+                // Hold off posting this member until filtering can be fully considered on reference members
+                string pendingMemberInfo = $"\n{indents}{header}";
 
                 // Member's references
                 Dictionary<MemberInfo, int> referencedMembers = new(mri.ReferencedMembers);
                 List<MemberReferenceInfo> referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencedMembers.Keys.Contains(fm.Member));
                 List<MemberReferenceInfo> filteredReferencedReferenceMembers = filter.ApplyFilterTo(referencedReferenceMembers).ToList();
                 var filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Member).Contains(rm.Key));
-                builder.Append(GetFormattedMembers(new(filteredReferencedMembers), true, indents, format));
+                if (filteredReferencedMembers.Count > 0)
+                {
+                    builder.Append(pendingMemberInfo);
+                    pendingMemberInfo = string.Empty;
+                    builder.Append(GetFormattedMembers(new(filteredReferencedMembers), true, indents, format));
+                }
 
                 referencedMembers = new(mri.ReferencingMembers);
                 referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencingMembers.Keys.Contains(fm.Member));
                 filteredReferencedReferenceMembers = filter.ApplyFilterTo(referencedReferenceMembers).ToList();
                 filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Member).Contains(rm.Key));
-                builder.Append(GetFormattedMembers(new(filteredReferencedMembers), false, indents, format));
+                if (filteredReferencedMembers.Count > 0)
+                {
+                    if (!pendingMemberInfo.Equals(string.Empty)) builder.Append(pendingMemberInfo);
+                    builder.Append(GetFormattedMembers(new(filteredReferencedMembers), false, indents, format));
+                }
             }
             return builder.ToString();
         }
