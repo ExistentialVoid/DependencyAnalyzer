@@ -30,12 +30,7 @@ namespace DependencyAnalyzer
             {
                 if (Filter.HasFlag(ReferenceBindingFlags.NonCompiler) && member.IsCompilerGenerated) continue;
 
-                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) && 
-                    member.ReferencedMembers.Count + member.ReferencingMembers.Count == 0) continue;
-
-                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) &&
-                    (member.ReferencedMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count
-                    + member.ReferencingMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count == 0)) continue;
+                if (Filter.HasFlag(ReferenceBindingFlags.NoPropertyMethods) && (member.IsSetter(out _) || member.IsSetter(out _))) continue; 
 
                 if (member.Member.DeclaringType != null)
                 {
@@ -44,6 +39,13 @@ namespace DependencyAnalyzer
                         (member.ReferencedMembers.Keys.ToList().Exists(siblingRefPredicate) ||
                         member.ReferencingMembers.Keys.ToList().Exists(siblingRefPredicate))) continue;
                 }
+
+                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) && 
+                    member.ReferencedMembers.Count + member.ReferencingMembers.Count == 0) continue;
+
+                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) &&
+                    (member.ReferencedMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count
+                    + member.ReferencingMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count == 0)) continue;
 
                 filtered.Add(member);
             }
@@ -68,12 +70,16 @@ namespace DependencyAnalyzer
         /// </summary>
         WithReferences = 1,
         /// <summary>
-        /// Specifies that references to other members in own defining class will appear in report.
+        /// Specifies that references to other members in own defining class will not appear in report.
         /// </summary>
         NoSiblingReferences = 2,
         /// <summary>
-        /// Specifies that get and set methods will not be reported
+        /// Specifies that compiler-generated members will not appear in report
         /// </summary>
-        NonCompiler = 4
+        NonCompiler = 4,
+        /// <summary>
+        /// Specifies that get and set methods will not appear in report
+        /// </summary>
+        NoPropertyMethods = 5
     }
 }
