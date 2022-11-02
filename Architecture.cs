@@ -95,7 +95,7 @@ namespace DependencyAnalyzer
                 List<MemberReferenceInfo> referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencedMembers.Keys.Contains(fm.Member));
                 List<MemberReferenceInfo> filteredReferencedReferenceMembers = filter.ApplyFilterTo(referencedReferenceMembers).ToList();
                 var filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Member).Contains(rm.Key));
-                if (filteredReferencedMembers.Count > 0)
+                if (!ReferenceFilters.HasFlag(ReferenceBindingFlags.WithReferences) || filteredReferencedMembers.Count > 0)
                 {
                     builder.Append(pendingMemberInfo);
                     pendingMemberInfo = string.Empty;
@@ -106,7 +106,7 @@ namespace DependencyAnalyzer
                 referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencingMembers.Keys.Contains(fm.Member));
                 filteredReferencedReferenceMembers = filter.ApplyFilterTo(referencedReferenceMembers).ToList();
                 filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Member).Contains(rm.Key));
-                if (filteredReferencedMembers.Count > 0)
+                if (!ReferenceFilters.HasFlag(ReferenceBindingFlags.WithReferences) || filteredReferencedMembers.Count > 0)
                 {
                     if (!pendingMemberInfo.Equals(string.Empty)) builder.Append(pendingMemberInfo);
                     builder.Append(GetFormattedMembers(new(filteredReferencedMembers), false, indents, format));

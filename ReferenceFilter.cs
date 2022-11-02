@@ -30,7 +30,7 @@ namespace DependencyAnalyzer
             {
                 if (Filter.HasFlag(ReferenceBindingFlags.NonCompiler) && member.IsCompilerGenerated) continue;
 
-                if (Filter.HasFlag(ReferenceBindingFlags.NoPropertyMethods) && (member.IsSetter(out _) || member.IsSetter(out _))) continue; 
+                if (Filter.HasFlag(ReferenceBindingFlags.NoPropertyMethods) && (member.IsGetter(out _) || member.IsSetter(out _))) continue; 
 
                 if (member.Member.DeclaringType != null)
                 {
