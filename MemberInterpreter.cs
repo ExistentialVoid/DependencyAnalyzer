@@ -13,7 +13,7 @@ namespace DependencyAnalyzer
         /// <summary>
         /// The constructor-provided types without closures
         /// </summary>
-        private List<Type> types;
+        private readonly List<Type> types;
 
 
         /// <summary>
@@ -22,7 +22,7 @@ namespace DependencyAnalyzer
         /// <param name="types">All types to be considered</param>
         public MemberInterpreter(List<Type> types)
         {
-            this.types = types.FindAll(t => !t.FullName.Contains(">c"));
+            this.types = types.FindAll(t => !t.Name.Contains(">c"));
         }
 
 
@@ -52,14 +52,17 @@ namespace DependencyAnalyzer
             // Add and Remove methods are auto-generated
             // RaiseMethod will always return null in C#
             List<MethodInfo> methods = member.GetOtherMethods(true).ToList();
-            methods.Add(member.EventHandlerType.GetMethod("Invoke"));
+            if (member.EventHandlerType?.GetMethod("Invoke") is MethodInfo invokeM) methods.Add(invokeM);
             methods.ForEach(m => refMembers.AddRange(GetMethodReferences(m)));
 
             return refMembers;
         }
-        private List<MemberInfo> GetFieldReferences(FieldInfo member) =>
-            GetTypeReferences(member?.FieldType);
-        internal List<MemberInfo> GetReferencedMembers(MemberInfo member)
+        private List<MemberInfo> GetFieldReferences(FieldInfo? member)
+        {
+            if (member is null) return new();
+            return GetTypeReferences(member.FieldType);
+        }
+        internal List<MemberInfo> GetReferencedMembers(MemberInfo? member)
         {
             if (member is null) return new();
             return member.MemberType switch
@@ -72,7 +75,7 @@ namespace DependencyAnalyzer
                 _ => new()
             };
         }
-        private List<MemberInfo> GetMethodBodyReferences(MethodBase methodbase)
+        private List<MemberInfo> GetMethodBodyReferences(MethodBase? methodbase)
         {
             if (methodbase is null) return new();
             List<MemberInfo> refMembers = new();
@@ -94,7 +97,7 @@ namespace DependencyAnalyzer
 
             return refMembers;
         }
-        private List<MemberInfo> GetMethodReferences(MethodInfo member)
+        private List<MemberInfo> GetMethodReferences(MethodInfo? member)
         {
             if (member is null) return new();
             // return type
@@ -113,24 +116,25 @@ namespace DependencyAnalyzer
 
             return refMembers;
         }
-        private List<MemberInfo> GetParameterReferences(ParameterInfo param) =>
-            GetTypeReferences(param?.ParameterType);
-        private List<MemberInfo> GetPropertyReferences(PropertyInfo member)
+        private List<MemberInfo> GetParameterReferences(ParameterInfo? param)
+        {
+            if (param is null) return new();
+            return GetTypeReferences(param.ParameterType);
+        }
+        private List<MemberInfo> GetPropertyReferences(PropertyInfo? member)
         {
             if (member is null) return new();
             //type
             List<MemberInfo> refMembers = GetTypeReferences(member.PropertyType);
             //get & set accessor methods
-            List<MethodInfo> methods = new()
-            {
-                member.GetGetMethod(),
-                member.GetSetMethod()
-            };
+            List<MethodInfo> methods = new();
+            if (member.GetMethod is MethodInfo getM) methods.Add(getM);
+            if (member.SetMethod is MethodInfo setM) methods.Add(setM);
             methods.ForEach(m => refMembers.AddRange(GetMethodReferences(m)));
 
             return refMembers;
         }
-        private List<MemberInfo> GetTypeReferences(Type t)
+        private List<MemberInfo> GetTypeReferences(Type? t)
         {
             if (t is null) return new();
             List<MemberInfo> refMembers = new();

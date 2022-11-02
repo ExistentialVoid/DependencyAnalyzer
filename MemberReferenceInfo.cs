@@ -21,7 +21,7 @@ namespace DependencyAnalyzer
         {
             get
             {
-                string name = Member is TypeInfo t ? t.FullName : Member.Name;
+                string name = Member is TypeInfo t ? t.FullName ?? t.Name : Member.Name;
                 return name.Contains('>') || name.Contains(".cctor");
             }
         }
@@ -35,17 +35,13 @@ namespace DependencyAnalyzer
         {
             get
             {
-                if (_cachedSignature == null)
-                {
-                    SignatureBuilder sig = new();
-                    _cachedSignature = sig.GetSignature(_member);
-                }
+                if (_cachedSignature.Equals(string.Empty)) _cachedSignature = SignatureBuilder.GetSignature(_member);
                 return _cachedSignature;
             }
         }
 
-        private Dictionary<MemberInfo, int> _referencingMembers = null;
-        private string _cachedSignature = null;
+        private Dictionary<MemberInfo, int> _referencingMembers = new();
+        private string _cachedSignature = string.Empty;
         private readonly MemberInfo _member;
         private readonly Dictionary<MemberInfo, int> _referencedMembers = new();
 
@@ -64,7 +60,7 @@ namespace DependencyAnalyzer
                                         .Key;
 
             if (existingRef != null) _referencedMembers[existingRef]++;
-            else if (!(member is TypeInfo type && _member.DeclaringType.HasSameMetadataDefinitionAs(type)) &&
+            else if (!(member is TypeInfo type && (_member.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
                 (!member.DeclaringType?.HasSameMetadataDefinitionAs(_member.DeclaringType) ?? true)) _referencedMembers.Add(member, 1);
         }
         private void AddReferencingMember(MemberInfo member)
@@ -90,7 +86,7 @@ namespace DependencyAnalyzer
             var flattenedMembers = referenceTypes.AsQueryable().SelectMany(t => t.Members.ToList()).ToList();
             foreach (var member in flattenedMembers)
             {
-                Func<MemberInfo, bool> matchedMember = m => m.Name.Equals(_member.Name) || m.Name.Contains($"et_{_member.Name}");
+                bool matchedMember(MemberInfo m) => m.Name.Equals(_member.Name) || m.Name.Contains($"et_{_member.Name}");
                 if (member.ReferencedMembers.Keys.Any(matchedMember)) AddReferencingMember(member.Member);
             }
         }
@@ -107,7 +103,7 @@ namespace DependencyAnalyzer
                 return true;
             }
 
-            methodName = null;
+            methodName = string.Empty;
             return false;
         }
         /// <summary>
@@ -123,7 +119,7 @@ namespace DependencyAnalyzer
                 return true;
             }
 
-            propertyName = null;
+            propertyName = string.Empty;
             return false;
         }
         /// <summary>
@@ -139,7 +135,7 @@ namespace DependencyAnalyzer
                 return true;
             }
 
-            propertyName = null;
+            propertyName = string.Empty;
             return false;
         }
         /// <summary>
@@ -155,7 +151,7 @@ namespace DependencyAnalyzer
                 return true;
             }
 
-            propertyName = null;
+            propertyName = string.Empty;
             return false;
         }
         public override string ToString()

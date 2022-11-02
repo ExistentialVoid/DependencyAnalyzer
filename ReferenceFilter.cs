@@ -24,7 +24,7 @@ namespace DependencyAnalyzer
             if (members is null) return new List<MemberReferenceInfo>();
             if (Filter == ReferenceBindingFlags.Default) return new List<MemberReferenceInfo>(members);
 
-            List<MemberReferenceInfo> filtered = new List<MemberReferenceInfo>();
+            List<MemberReferenceInfo> filtered = new();
 
             foreach (var member in members)
             {
@@ -34,7 +34,7 @@ namespace DependencyAnalyzer
 
                 if (member.Member.DeclaringType != null)
                 {
-                    Predicate<MemberInfo> siblingRefPredicate = m => m.DeclaringType != null && m.DeclaringType == member.Member.DeclaringType;
+                    bool siblingRefPredicate(MemberInfo m) => m.DeclaringType != null && m.DeclaringType == member.Member.DeclaringType;
                     if (Filter.HasFlag(ReferenceBindingFlags.NoSiblingReferences) &&
                         (member.ReferencedMembers.Keys.ToList().Exists(siblingRefPredicate) ||
                         member.ReferencingMembers.Keys.ToList().Exists(siblingRefPredicate))) continue;

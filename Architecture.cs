@@ -14,7 +14,7 @@ namespace DependencyAnalyzer
         {
             get
             {
-                List<MemberReferenceInfo> members = new List<MemberReferenceInfo>();
+                List<MemberReferenceInfo> members = new();
                 ReferenceTypes.ForEach(cri => members.AddRange(cri.Members.ToList()));
                 return members;
             }
@@ -30,7 +30,7 @@ namespace DependencyAnalyzer
         public Architecture(Type[] types)
         {
             // Flatten nested types for discoverability. Invisible to results
-            List<Type> flattenedTypes = new List<Type>(types);
+            List<Type> flattenedTypes = new(types);
             types.ToList().ForEach(t => flattenedTypes.AddRange(t.GetNestedTypes()));
             foreach (Type t in flattenedTypes)
             {
@@ -51,13 +51,13 @@ namespace DependencyAnalyzer
             _referenceTypes.ForEach(t => t.FindReferencedMembers(_referenceTypes));
             _referenceTypes.ForEach(t => t.FindReferencingMembers(_referenceTypes));
         } 
-        private string GetFormattedClass(ClassReferenceInfo cri, ReportFormat format)
+        private string GetFormattedClass(ClassReferenceInfo? cri, ReportFormat format)
         {
-            if (cri == null) return string.Empty;
+            if (cri is null) return string.Empty;
 
             StringBuilder builder = new();
             string indents = cri.Class.IsNested ? "\t" : string.Empty;
-            Type t = cri.Class.DeclaringType;
+            Type? t = cri.Class.DeclaringType;
             while (t is not null && t.IsNested)
             {
                 indents += '\t';
@@ -84,9 +84,9 @@ namespace DependencyAnalyzer
 
                 header = format switch {
                     ReportFormat.Basic => mri.Member.Name,
-                    ReportFormat.Detailed => mri.ToString(),
+                    ReportFormat.Detailed => mri.ToString() ?? string.Empty,
                     ReportFormat.Signature => mri.Signature,
-                    _ => mri.Member.ToString() };
+                    _ => mri.Member.ToString() ?? string.Empty };
                 // Hold off posting this member until filtering can be fully considered on reference members
                 string pendingMemberInfo = $"\n{indents}{header}";
 
@@ -127,10 +127,10 @@ namespace DependencyAnalyzer
                 {
                     ReportFormat.Basic => $"[{m.MemberType}] {m.DeclaringType?.FullName ?? string.Empty}::{(m is TypeInfo rt ? rt.Name : m.Name)}",
                     ReportFormat.Detailed => $"[{m.MemberType}] {m.DeclaringType?.FullName ?? string.Empty}::{(m is TypeInfo rt ? rt.FullName : m.Name)}",
-                    ReportFormat.Signature => FlattenedReferenceMembers.Find(frmi => frmi.Member.HasSameMetadataDefinitionAs(m)).Signature,
+                    ReportFormat.Signature => FlattenedReferenceMembers.Find(frmi => frmi.Member.HasSameMetadataDefinitionAs(m))?.Signature ?? string.Empty,
                     _ => $"[{m.MemberType}] {m}"
                 };
-                if (string.IsNullOrEmpty(info)) info = m.ToString();
+                if (string.IsNullOrEmpty(info)) info = m.ToString() ?? string.Empty;
                 builder.Append($"\n{indents}    {$"({members[m]})",-5}{info}");
             }
             return builder.ToString();

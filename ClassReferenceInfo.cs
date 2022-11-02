@@ -17,16 +17,12 @@ namespace DependencyAnalyzer
         {
             get
             {
-                if (_cachedSignature == null)
-                {
-                    SignatureBuilder sig = new();
-                    _cachedSignature = sig.GetSignature(_class);
-                }
+                if (_cachedSignature.Equals(string.Empty)) _cachedSignature = SignatureBuilder.GetSignature(_class);
                 return _cachedSignature;
             }
         }
 
-        private string _cachedSignature = null;
+        private string _cachedSignature = string.Empty;
         private readonly Type _class;
         private readonly List<MemberReferenceInfo> _members = new();
 
@@ -48,9 +44,9 @@ namespace DependencyAnalyzer
                 if (member.IsAnonomous(out string declaredMethodName))
                 {
 
-                    ClassReferenceInfo cri = this;
-                    MemberReferenceInfo declaredMethod = null;
-                    while (declaredMethod == null && cri != null)
+                    ClassReferenceInfo? cri = this;
+                    MemberReferenceInfo? declaredMethod = null;
+                    while (declaredMethod is null && cri is not null)
                     {
                         declaredMethod = cri.Members
                             .ToList()
@@ -63,20 +59,20 @@ namespace DependencyAnalyzer
                     foreach (var referencedMember in member.ReferencedMembers)
                     {
                         if (referencedMember.Key is not MethodInfo) continue;
-                        declaredMethod.AddReferencedMember(referencedMember.Key);
+                        declaredMethod?.AddReferencedMember(referencedMember.Key);
                     }
                 }
                 else if (member.IsGetter(out string propertyName))
                 {
-                    MemberReferenceInfo property = _members.Find(m => m.Member.Name.Equals(propertyName));
+                    MemberReferenceInfo? property = _members.Find(m => m.Member.Name.Equals(propertyName));
                     foreach (var referencedMember in member.ReferencedMembers)
-                        property.AddReferencedMember(referencedMember.Key);
+                        property?.AddReferencedMember(referencedMember.Key);
                 }
                 else if (member.IsSetter(out propertyName))
                 {
-                    MemberReferenceInfo property = _members.Find(m => m.Member.Name.Equals(propertyName));
+                    MemberReferenceInfo? property = _members.Find(m => m.Member.Name.Equals(propertyName));
                     foreach (var referencedMember in member.ReferencedMembers)
-                        property.AddReferencedMember(referencedMember.Key);
+                        property?.AddReferencedMember(referencedMember.Key);
                 }
             }
 
@@ -92,6 +88,6 @@ namespace DependencyAnalyzer
                     _members.Add(member);
             }
         }
-        public override string ToString() => _class.FullName;
+        public override string ToString() => _class.FullName ?? _class.Name;
     }
 }

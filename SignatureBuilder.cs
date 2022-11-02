@@ -4,24 +4,22 @@ using System.Text;
 
 namespace DependencyAnalyzer
 {
-    internal sealed class SignatureBuilder
+    internal static class SignatureBuilder
     {
-        private MemberInfo _member;
-        private StringBuilder builder;
-
-        private void AppendGenericInfo(TypeInfo info)
+        private static string GetGenericInfo(TypeInfo? info)
         {
-            if (!info.IsGenericType) return;
+            if (info is null) return string.Empty;
+            if (!info.IsGenericType) return string.Empty;
 
             string genInfo = "[";
             Type[] genArgs = info.GetGenericArguments();
             foreach (Type genArg in genArgs) genInfo += $"{genArg.Name}, ";
 
-            builder.Append(genInfo.TrimEnd().TrimEnd(',') + ']');
+            return genInfo.TrimEnd().TrimEnd(',') + ']';
         }
-        private void AppendMethodParamsInfo()
+        private static string GetMethodParamsInfo(MethodBase info)
         {
-            if (_member is not MethodBase info) return;
+            if (info is null) return string.Empty;
 
             string paramInfo = "(";
             ParameterInfo[] parameters = info.GetParameters();
@@ -40,61 +38,24 @@ namespace DependencyAnalyzer
 
                 paramInfo += ", ";
             }
-            builder.Append(paramInfo.TrimEnd().TrimEnd(',') + ')');
+            return paramInfo.TrimEnd().TrimEnd(',') + ')';
         }
-        private void AppendPropertyAccessorInfo()
+        internal static string GetSignature(MemberInfo? member)
         {
-            if (_member is not PropertyInfo info) return;
+            if (member is null) return string.Empty;
 
-            string propertyInfo = " { get; ";
-            MethodInfo accessor = info.SetMethod;
-            if (accessor is not null)
-            {
-                string modifier = accessor.IsPublic ? "public " :
-                    (accessor.IsPrivate ? "private " :
-                    (accessor.IsAssembly ? "internal " :
-                    (accessor.IsFamily ? "protected " :
-                    (accessor.IsFamilyAndAssembly ? "protected internal " : "private protected "))));
-                propertyInfo += $"{modifier}set; ";
-            }
-            propertyInfo += "}";
-            builder.Append(propertyInfo);
+            if (member is ConstructorInfo ctor) return SignatureOfConstructor(ctor);
+            else if (member is FieldInfo field) return SignatureOfField(field);
+            else if (member is EventInfo evnt) return SignatureOfEvent(evnt);
+            else if (member is MethodInfo method) return SignatureOfMethod(method);
+            else if (member is PropertyInfo prop) return SignatureOfProperty(prop);
+            else if (member is TypeInfo type) return SignatureOfType(type);
+
+            return string.Empty;
         }
-        internal string GetSignature(MemberInfo member)
+        private static string SignatureOfConstructor(ConstructorInfo info)
         {
-            _member = member;
-            builder = new();
-
-            switch (_member.MemberType)
-            {
-                case MemberTypes.Field:
-                    SignatureOfField();
-                    break;
-                case MemberTypes.Property:
-                    SignatureOfProperty();
-                    break;
-                case MemberTypes.Method:
-                    SignatureOfMethod();
-                    break;
-                case MemberTypes.Constructor:
-                    SignatureOfConstructor();
-                    break;
-                case MemberTypes.Event:
-                    SignatureOfEvent();
-                    break;
-                case MemberTypes.NestedType:
-                case MemberTypes.TypeInfo:
-                    SignatureOfType();
-                    break;
-                default: break;
-            }
-
-            return builder.ToString();
-        }
-        private void SignatureOfConstructor()
-        {
-            ConstructorInfo info = _member as ConstructorInfo;
-
+            StringBuilder builder = new();
             if (info.IsPublic) builder.Append("public ");
             else if (info.IsPrivate) builder.Append("private ");
             else if (info.IsAssembly) builder.Append("internal ");
@@ -108,29 +69,31 @@ namespace DependencyAnalyzer
             else if (info.IsFinal) builder.Append("sealed ");
 
             builder.Append($"void {info.Name}");
-            AppendMethodParamsInfo();
+            builder.Append(GetMethodParamsInfo(info));
+            return builder.ToString();
         }
-        private void SignatureOfEvent()
+        private static string SignatureOfEvent(EventInfo info)
         {
-            EventInfo info = _member as EventInfo;
+            StringBuilder builder = new();
+            if (info.AddMethod is MethodInfo addMethod)
+            {
+                if (addMethod.IsPublic) builder.Append("public ");
+                else if (addMethod.IsPrivate) builder.Append("private ");
+                else if (addMethod.IsAssembly) builder.Append("internal ");
+                else if (addMethod.IsFamily) builder.Append("protected ");
+                else if (addMethod.IsFamilyAndAssembly) builder.Append("internal protected ");
+                else if (addMethod.IsFamilyOrAssembly) builder.Append("private protected ");
+            }
 
-            if (info.AddMethod.IsPublic) builder.Append("public ");
-            else if (info.AddMethod.IsPrivate) builder.Append("private ");
-            else if (info.AddMethod.IsAssembly) builder.Append("internal ");
-            else if (info.AddMethod.IsFamily) builder.Append("protected ");
-            else if (info.AddMethod.IsFamilyAndAssembly) builder.Append("internal protected ");
-            else if (info.AddMethod.IsFamilyOrAssembly) builder.Append("private protected ");
-
-            Type handlerType = info.EventHandlerType;
-            builder.Append($"event {handlerType.Name}");
-
-            AppendGenericInfo(handlerType as TypeInfo);
+            Type? handlerType = info.EventHandlerType;
+            builder.Append($"event {handlerType?.Name ?? "?"}");
+            builder.Append(GetGenericInfo(handlerType as TypeInfo));
             builder.Append($" {info.Name}");
+            return builder.ToString();
         }
-        private void SignatureOfField()
+        private static string SignatureOfField(FieldInfo info)
         {
-            FieldInfo info = _member as FieldInfo;
-
+            StringBuilder builder = new();
             if (info.IsPublic) builder.Append("public ");
             else if (info.IsPrivate) builder.Append("private ");
             else if (info.IsAssembly) builder.Append("internal ");
@@ -145,14 +108,13 @@ namespace DependencyAnalyzer
 
             Type type = info.FieldType;
             builder.Append(type.Name);
-
-            AppendGenericInfo(type as TypeInfo);
+            builder.Append(GetGenericInfo(type as TypeInfo));
             builder.Append($" {info.Name}");
+            return builder.ToString();
         }
-        private void SignatureOfMethod()
+        private static string SignatureOfMethod(MethodInfo info)
         {
-            MethodInfo info = _member as MethodInfo;
-
+            StringBuilder builder = new();
             if (info.IsPublic) builder.Append("public ");
             else if (info.IsPrivate) builder.Append("private ");
             else if (info.IsAssembly) builder.Append("internal ");
@@ -165,39 +127,68 @@ namespace DependencyAnalyzer
             else if (info.IsVirtual) builder.Append("virtual ");
             else if (info.IsFinal) builder.Append("sealed ");
             else if (info.IsHideBySig) builder.Append("new ");
-            else if ((info.DeclaringType.BaseType?.GetMethod(info.Name)?.GetMethodBody() 
+            else if ((info.DeclaringType?.BaseType?.GetMethod(info.Name)?.GetMethodBody() 
                 ?? info.GetMethodBody()) != info.GetMethodBody()) builder.Append("override ");
 
-            Type returnType = info.ReturnType ?? null;
+            Type returnType = info.ReturnType;
             builder.Append(returnType?.Name ?? "void");
-
-            AppendGenericInfo(returnType as TypeInfo);
+            builder.Append(GetGenericInfo(returnType as TypeInfo));
             builder.Append($" {info.Name}");
-            AppendMethodParamsInfo();
+            builder.Append(GetMethodParamsInfo(info));
+            return builder.ToString();
         }
-        private void SignatureOfProperty()
+        private static string SignatureOfProperty(PropertyInfo info)
         {
-            PropertyInfo info = _member as PropertyInfo;
+            StringBuilder builder = new();
+            MethodInfo? getter = info.GetMethod;
+            MethodInfo? setter = info.SetMethod;
 
-            MethodInfo accessor = info.CanRead ? info.GetMethod : info.SetMethod;
-            if (accessor.IsPublic) builder.Append("public ");
-            else if (accessor.IsPrivate) builder.Append("private ");
-            else if (accessor.IsAssembly) builder.Append("internal ");
-            else if (accessor.IsFamily) builder.Append("protected ");
-            else if (accessor.IsFamilyAndAssembly) builder.Append("internal protected ");
-            else if (accessor.IsFamilyOrAssembly) builder.Append("private protected ");
+            string getterAccessModifiers;
+            if (getter is null) getterAccessModifiers = string.Empty;
+            else if (getter.IsPublic) getterAccessModifiers = "public ";
+            else if (getter.IsAssembly) getterAccessModifiers = "internal ";
+            else if (getter.IsFamily) getterAccessModifiers = "protected ";
+            else if (getter.IsFamilyOrAssembly) getterAccessModifiers ="protected internal";
+            else if (getter.IsFamilyAndAssembly) getterAccessModifiers = "private protected ";
+            else getterAccessModifiers = "private ";
 
+            string setterAccessModifiers;
+            if (setter is null) setterAccessModifiers = string.Empty;
+            else if (setter.IsPublic) setterAccessModifiers = "public ";
+            else if (setter.IsAssembly) setterAccessModifiers = "internal ";
+            else if (setter.IsFamily) setterAccessModifiers = "protected ";
+            else if (setter.IsFamilyOrAssembly) setterAccessModifiers = "protected internal ";
+            else if (setter.IsFamilyAndAssembly) setterAccessModifiers = "private protected ";
+            else setterAccessModifiers = "private ";
+
+            string propertyAccessModifiers;
+            if (getter is null) propertyAccessModifiers = setterAccessModifiers;
+            else if (setter is null) propertyAccessModifiers = getterAccessModifiers;
+            else if (getter.IsPublic || setter.IsPublic) propertyAccessModifiers = "public ";
+            else if (getter.IsAssembly || setter.IsAssembly) propertyAccessModifiers = "internal ";
+            else if (getter.IsFamily || setter.IsFamily) propertyAccessModifiers = "protected ";
+            else if (getter.IsFamilyOrAssembly || setter.IsFamilyOrAssembly) propertyAccessModifiers = "protected internal ";
+            else if (getter.IsFamilyAndAssembly || setter.IsFamilyAndAssembly) propertyAccessModifiers = "private protected ";
+            else propertyAccessModifiers = "private ";
+
+            if (getterAccessModifiers.Equals(propertyAccessModifiers)) getterAccessModifiers = string.Empty;
+            if (setterAccessModifiers.Equals(propertyAccessModifiers)) setterAccessModifiers = string.Empty;
+
+            builder.Append(propertyAccessModifiers);
+            if ((getter?.IsStatic ?? false) || (setter?.IsStatic ?? false)) builder.Append("static ");
             Type type = info.PropertyType;
             builder.Append(type.Name);
-
-            AppendGenericInfo(type as TypeInfo);
+            builder.Append(GetGenericInfo(type as TypeInfo));
             builder.Append($" {info.Name}");
-            AppendPropertyAccessorInfo();
+            builder.Append("{ ");
+            if (getter is not null) builder.Append(getterAccessModifiers + "get; ");
+            if (setter is not null) builder.Append(setterAccessModifiers + "set; ");
+            builder.Append('}');
+            return builder.ToString();
         }
-        private void SignatureOfType()
+        private static string SignatureOfType(TypeInfo info)
         {
-            TypeInfo info = _member as TypeInfo;
-
+            StringBuilder builder = new();
             if (info.IsNested)
             {
                 if (info.IsNestedPublic) builder.Append("public ");
@@ -223,7 +214,8 @@ namespace DependencyAnalyzer
             else if (info.IsEnum) builder.Append($"enum {info.Name}");
             else if (info.IsValueType) builder.Append($"struct {info.Name}");
 
-            AppendGenericInfo(info);
+            builder.Append(GetGenericInfo(info));
+            return builder.ToString();
         }
     }
 }
