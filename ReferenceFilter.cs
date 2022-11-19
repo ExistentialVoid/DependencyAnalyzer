@@ -32,9 +32,9 @@ namespace DependencyAnalyzer
 
                 if (Filter.HasFlag(ReferenceBindingFlags.NoPropertyMethods) && (member.IsGetter(out _) || member.IsSetter(out _))) continue; 
 
-                if (member.Member.DeclaringType != null)
+                if (member.Host.DeclaringType != null)
                 {
-                    bool siblingRefPredicate(MemberInfo m) => m.DeclaringType != null && m.DeclaringType == member.Member.DeclaringType;
+                    bool siblingRefPredicate(MemberInfo m) => m.DeclaringType != null && m.DeclaringType == member.Host.DeclaringType;
                     if (Filter.HasFlag(ReferenceBindingFlags.NoSiblingReferences) &&
                         (member.ReferencedMembers.Keys.ToList().Exists(siblingRefPredicate) ||
                         member.ReferencingMembers.Keys.ToList().Exists(siblingRefPredicate))) continue;
@@ -44,8 +44,8 @@ namespace DependencyAnalyzer
                     member.ReferencedMembers.Count + member.ReferencingMembers.Count == 0) continue;
 
                 if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) &&
-                    (member.ReferencedMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count
-                    + member.ReferencingMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Member.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count == 0)) continue;
+                    (member.ReferencedMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Host.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count
+                    + member.ReferencingMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Host.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count == 0)) continue;
 
                 filtered.Add(member);
             }

@@ -10,33 +10,35 @@ namespace DependencyAnalyzer
     {
         public static BindingFlags Filter { get; } = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-        private List<MemberReferenceInfo> FlattenedReferenceMembers
+        internal List<MemberReferenceInfo> FlattenedReferenceMembers
         {
             get
             {
                 List<MemberReferenceInfo> members = new();
-                ReferenceTypes.ForEach(cri => members.AddRange(cri.Members.ToList()));
+                ReferenceTypes.ForEach(cri => members.AddRange(cri.FlattenedReferenceMembers));
                 return members;
             }
         }
+        internal List<ClassReferenceInfo> FlattenedReferenceTypes
+        {
+            get
+            {
+                List<ClassReferenceInfo> classes = new(ReferenceTypes);
+                ReferenceTypes.ForEach(c => classes.AddRange(c.FlattenedReferenceTypes));
+                return classes;
+            }
+        }
         public static StringBuilder InstructionLog { get; } = new();
-        internal int NamespaceCount => ReferenceTypes.ConvertAll(c => c.Class.Namespace).Distinct().Count();
         public ReferenceBindingFlags ReferenceFilters { get; set; } = ReferenceBindingFlags.NonCompiler;
-        internal List<ClassReferenceInfo> ReferenceTypes { get; } = new();
+        private List<ClassReferenceInfo> ReferenceTypes { get; } = new();
 
 
         public Architecture(Type[] types)
         {
-            // Flatten nested types for discoverability. Invisible to results
-            List<Type> flattenedTypes = new(types);
-            types.ToList().ForEach(t => flattenedTypes.AddRange(t.GetNestedTypes()));
-            foreach (Type t in flattenedTypes)
+            foreach (Type t in types)
             {
-                TypeInfo T = t as TypeInfo;
-                if (T == null) throw new Exception();
                 if (t.IsEnum) continue;
-
-                ClassReferenceInfo cri = new(t);
+                ClassReferenceInfo cri = new(t as TypeInfo);
                 ReferenceTypes.Add(cri);
             }
         }
@@ -48,8 +50,8 @@ namespace DependencyAnalyzer
         /// <returns>Returns the results of the analysis</returns>
         public void Analyze()
         {
-            ReferenceTypes.ForEach(t => t.FindReferencedMembers(ReferenceTypes));
-            ReferenceTypes.ForEach(t => t.FindReferencingMembers(ReferenceTypes));
+            FlattenedReferenceTypes.ForEach(t => t.FindReferencedMembers(FlattenedReferenceTypes));
+            FlattenedReferenceTypes.ForEach(t => t.FindReferencingMembers(FlattenedReferenceTypes));
 
             ApplyReferenceModifications();
         }
@@ -58,10 +60,10 @@ namespace DependencyAnalyzer
         /// </summary>
         private void ApplyReferenceModifications()
         {
-            foreach (var type in ReferenceTypes)
+            foreach (var type in FlattenedReferenceTypes)
             {
                 // Flatten underlying members' references
-                foreach (var member in type.Members)
+                foreach (var member in type.FlattenedReferenceMembers)
                 {
                     if (member.IsAnonomous(out string declaredMethodName))
                     {
@@ -70,12 +72,12 @@ namespace DependencyAnalyzer
                         // when type is nested
                         while (declaredMethod is null && cri is not null)
                         {
-                            declaredMethod = cri.Members
+                            declaredMethod = cri.FlattenedReferenceMembers
                                 .ToList()
-                                .Find(m => m.Member.Name.Equals(declaredMethodName));
-                            cri = ReferenceTypes
+                                .Find(m => m.Host.Name.Equals(declaredMethodName));
+                            cri = FlattenedReferenceTypes
                                 .ToList()
-                                .Find(c => cri.Class.DeclaringType != null && c.Class.HasSameMetadataDefinitionAs(cri.Class.DeclaringType));
+                                .Find(c => cri.Host.DeclaringType != null && c.Host.HasSameMetadataDefinitionAs(cri.Host.DeclaringType));
                         }
 
                         foreach (var referencedMember in member.ReferencedMembers)
@@ -86,7 +88,7 @@ namespace DependencyAnalyzer
                     }
                     else if (member.IsGetter(out string propertyName) || member.IsSetter(out propertyName))
                     {
-                        MemberReferenceInfo? property = type.Members.ToList().Find(m => m.Member.Name.Equals(propertyName));
+                        MemberReferenceInfo? property = type.Members.ToList().Find(m => m.Host.Name.Equals(propertyName)) as MemberReferenceInfo;
                         if (property is not null)
                         {
                             foreach (var referencedMember in member.ReferencedMembers)
@@ -103,8 +105,8 @@ namespace DependencyAnalyzer
             if (cri is null) return string.Empty;
 
             StringBuilder builder = new();
-            string indents = cri.Class.IsNested ? "\t" : string.Empty;
-            Type? t = cri.Class.DeclaringType;
+            string indents = cri.IsNested ? "\t" : string.Empty;
+            Type? t = cri.Host.DeclaringType;
             while (t is not null && t.IsNested)
             {
                 indents += '\t';
@@ -112,36 +114,36 @@ namespace DependencyAnalyzer
             }
 
             string header = format switch {
-                ReportFormat.Basic => cri.Class.Name,
+                ReportFormat.Basic => cri.Host.Name,
                 ReportFormat.Detailed => cri.ToString(),
                 ReportFormat.Signature => cri.Signature,
-                _ => cri.Class.ToString() };
+                _ => cri.Host.ToString() };
             builder.Append($"\n{indents}{header}");
             indents += '\t';
 
             ReferenceFilter filter = new(ReferenceFilters);
-            List<MemberReferenceInfo> filteredMembers = filter.ApplyFilterTo(cri.Members.ToList()).ToList();
+            List<MemberReferenceInfo> filteredMembers = filter.ApplyFilterTo(cri.FlattenedReferenceMembers.ToList()).ToList();
             foreach (MemberReferenceInfo mri in filteredMembers)
             {
-                if (mri.Member is TypeInfo ti)
+                if (mri.Host is TypeInfo ti)
                 {
-                    builder.Append(GetFormattedClass(ReferenceTypes.Find(rt => rt.Class.HasSameMetadataDefinitionAs(ti)), format));
+                    builder.Append(GetFormattedClass(FlattenedReferenceTypes.Find(rt => rt.Host.HasSameMetadataDefinitionAs(ti)), format));
                     continue;
                 }
 
                 header = format switch {
-                    ReportFormat.Basic => mri.Member.Name,
+                    ReportFormat.Basic => mri.Host.Name,
                     ReportFormat.Detailed => mri.ToString() ?? string.Empty,
                     ReportFormat.Signature => mri.Signature,
-                    _ => mri.Member.ToString() ?? string.Empty };
+                    _ => mri.Host.ToString() ?? string.Empty };
                 // Hold off posting this member until filtering can be fully considered on reference members
                 string pendingMemberInfo = $"\n{indents}{header}";
 
                 // Member's references
                 Dictionary<MemberInfo, int> referencedMembers = new(mri.ReferencedMembers);
-                List<MemberReferenceInfo> referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencedMembers.Keys.Contains(fm.Member));
+                List<MemberReferenceInfo> referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencedMembers.Keys.Contains(fm.Host));
                 List<MemberReferenceInfo> filteredReferencedReferenceMembers = filter.ApplyFilterTo(referencedReferenceMembers).ToList();
-                var filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Member).Contains(rm.Key));
+                var filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Host).Contains(rm.Key));
                 if (!ReferenceFilters.HasFlag(ReferenceBindingFlags.WithReferences) || filteredReferencedMembers.Count > 0)
                 {
                     builder.Append(pendingMemberInfo);
@@ -150,9 +152,9 @@ namespace DependencyAnalyzer
                 }
 
                 referencedMembers = new(mri.ReferencingMembers);
-                referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencingMembers.Keys.Contains(fm.Member));
+                referencedReferenceMembers = FlattenedReferenceMembers.FindAll(fm => mri.ReferencingMembers.Keys.Contains(fm.Host));
                 filteredReferencedReferenceMembers = filter.ApplyFilterTo(referencedReferenceMembers).ToList();
-                filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Member).Contains(rm.Key));
+                filteredReferencedMembers = referencedMembers.ToList().FindAll(rm => filteredReferencedReferenceMembers.ConvertAll(rrmi => rrmi.Host).Contains(rm.Key));
                 if (!ReferenceFilters.HasFlag(ReferenceBindingFlags.WithReferences) || filteredReferencedMembers.Count > 0)
                 {
                     if (!pendingMemberInfo.Equals(string.Empty)) builder.Append(pendingMemberInfo);
@@ -174,7 +176,7 @@ namespace DependencyAnalyzer
                 {
                     ReportFormat.Basic => $"[{m.MemberType}] {m.DeclaringType?.FullName ?? string.Empty}::{(m is TypeInfo rt ? rt.Name : m.Name)}",
                     ReportFormat.Detailed => $"[{m.MemberType}] {m.DeclaringType?.FullName ?? string.Empty}::{(m is TypeInfo rt ? rt.FullName : m.Name)}",
-                    ReportFormat.Signature => FlattenedReferenceMembers.Find(frmi => frmi.Member.HasSameMetadataDefinitionAs(m))?.Signature ?? string.Empty,
+                    ReportFormat.Signature => FlattenedReferenceMembers.Find(frmi => frmi.Host.HasSameMetadataDefinitionAs(m))?.Signature ?? string.Empty,
                     _ => $"[{m.MemberType}] {m}"
                 };
                 if (string.IsNullOrEmpty(info)) info = m.ToString() ?? string.Empty;
@@ -185,77 +187,21 @@ namespace DependencyAnalyzer
         public string GetFormattedResults(ReportFormat format)
         {
             StringBuilder builder = new();
-            // 1 : newobj  [Void] StringBuilder::.ctor()
-            // 6 : stloc.0
-            // 8 : ldarg.0
 
-            foreach (ClassReferenceInfo cri in ReferenceTypes.FindAll(rt => !rt.Class.IsNested))
-                // 9 : call  List`1 Architecture::get_ReferenceTypes()
-                // 14 : ldsfld [Predicate`1] <>c::<>9__10_0
-                // 19 : dup
-                // {
-                //     20 : brtrue.s 45
-                //     22 : pop
-                //     45 : callvirt  List`1 List`1::FindAll()
-                //     50 : callvirt  Enumerator List`1::GetEnumerator()
-                //     55 : stloc.2
+            bool shortFormat = true;
+            if (shortFormat)
+            {
+                ReferenceTypes.ForEach(c => builder.Append(c.GetSimpleFormat(string.Empty)));
+                return builder.ToString();
+            }
 
-                builder.Append(GetFormattedClass(cri, format));
-            // 28 : ldftn  Boolean <>c::<GetFormattedResults>b__10_0()
-            // 34 : newobj  [Void] Predicate`1::.ctor()
-            // 39 : dup
-            // 40 : stsfld [Predicate`1] <>c::<>9__10_0
-
-            // 56 : br.s 81
-            // 58 : ldloca.s 2
-            // 60 : call  ClassReferenceInfo Enumerator::get_Current()
-            // 65 : stloc.3
-            // 66 : ldloc.0
-            // 67 : ldarg.0
-            // 68 : ldloc.3
-            // 69 : ldarg.1
-            // 70 : call  String Architecture::GetFormattedClass()
-            // 75 : callvirt  StringBuilder StringBuilder::Append()
-            // 80 : pop
-            // 81 : ldloca.s 2
-            // 83 : call  Boolean Enumerator::MoveNext()
-            // 88 : brtrue.s 58
-            // 90 : leave.s 107
-            // 92 : ldloca.s 2
-            // 94 : constrained.
-            // 100 : callvirt  Void IDisposable::Dispose()
-            // 105 : nop
-            // 106 : endfinally
-            // 107 : ldloc.0
-            // 108 : callvirt  String Object::ToString()
-            // 113 : stloc.1
-            // 114 : ldarg.0
-            // 115 : call  Int32 Architecture::get_NamespaceCount()
-            // 120 : ldc.i4.1
-            // 121 : ceq
-            // 123 : stloc.s 4
-            // 125 : ldloc.s 4
-            // 127 : brfalse.s -83
-            // 129 : ldloc.1
-            // 130 : ldarg.0
-            // 131 : call  List`1 Architecture::get_ReferenceTypes()
-            // 136 : ldc.i4.0
-            // 137 : callvirt  ClassReferenceInfo List`1::get_Item()
-            // 142 : callvirt  Type ClassReferenceInfo::get_Class()
-            // 147 : callvirt  String Type::get_Namespace()
-            // 152 : ldstr " . "
-            // 157 : call  static String String::Concat()
-            // 162 : ldsfld [String] String::Empty
-            // 167 : callvirt  String String::Replace()
-            // 172 : stloc.1
-            // 173 : ldloc.1
-            // 174 : stloc.s 5
-            // 176 : br.s -78
+            foreach (ClassReferenceInfo cri in ReferenceTypes) builder.Append(GetFormattedClass(cri, format));
             string results = builder.ToString();
-            if (NamespaceCount == 1) results = results.Replace($"{ReferenceTypes[0].Class.Namespace}.", string.Empty);
+
+            int namespaceCount = ReferenceTypes.ConvertAll(c => c.Namespace).Distinct().Count();
+            if (namespaceCount == 1) results = results.Replace($"{ReferenceTypes[0].Namespace}.", string.Empty);
+
             return results;
-            // 178 : ldloc.s 5
-            // 180 : ret
         }
 
         public enum ReportFormat { Default, Basic, Detailed, Signature }

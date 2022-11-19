@@ -28,8 +28,8 @@ namespace DependencyAnalyzer
                                         .Key;
 
             if (existingRef != null) _referencedMembers[existingRef] += count;
-            else if (!(member is TypeInfo type && (Member.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
-                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Member.DeclaringType) ?? true)) _referencedMembers.Add(member, count);
+            else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
+                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) _referencedMembers.Add(member, count);
         }
         internal void AddReferencedMember(KeyValuePair<MemberInfo, int> refMember) => AddReferencedMember(refMember.Key, refMember.Value);
         internal void AddReferencingMember(MemberInfo member, int count = 1)
@@ -39,19 +39,19 @@ namespace DependencyAnalyzer
                                         .Find(m => m.Key.HasSameMetadataDefinitionAs(member)).Key;
 
             if (existingRef != null) _referencingMembers[existingRef] += count;
-            else if (!(member is TypeInfo type && (Member.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
-                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Member.DeclaringType) ?? true)) _referencingMembers.Add(member, count);
+            else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
+                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) _referencingMembers.Add(member, count);
         }
         internal void AddReferencingMember(KeyValuePair<MemberInfo, int> refMember) => AddReferencingMember(refMember.Key, refMember.Value);
         internal override void FindReferencedMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
         {
-            MemberInterpreter interpreter = new(referenceTypes.ToList().ConvertAll(c => c.Member as Type));
-            List<MemberInfo> referencedMembers = interpreter.GetReferencedMembers(Member);
+            MemberInterpreter interpreter = new(referenceTypes.ToList().ConvertAll(c => c.Host as Type));
+            List<MemberInfo> referencedMembers = interpreter.GetReferencedMembers(Host);
             
             List<ClassReferenceInfo> closures = referenceTypes.ToList().FindAll(c => c.IsClosure);
             foreach (var member in referencedMembers)
             {
-                if (member.DeclaringType is Type t && closures.Exists(c => c.Member.HasSameMetadataDefinitionAs(t)))
+                if (member.DeclaringType is Type t && closures.Exists(c => c.Host.HasSameMetadataDefinitionAs(t)))
                 {
                     List<MemberInfo> closureMethodReferencedMembers = interpreter.GetReferencedMembers(member);
                     foreach (var closureMember in closureMethodReferencedMembers)
@@ -65,9 +65,9 @@ namespace DependencyAnalyzer
             _referencingMembers = new();
             foreach (ClassReferenceInfo cri in referenceTypes)
             {
-                cri.FlattenedMembers
-                    .FindAll(m => m.Member.HasSameMetadataDefinitionAs(Member))
-                    .ForEach(m => AddReferencingMember(m.Member));
+                cri.FlattenedReferenceMembers
+                    .FindAll(m => m.Host.HasSameMetadataDefinitionAs(Host))
+                    .ForEach(m => AddReferencingMember(m.Host));
             }
         }
         /// <summary>
@@ -77,9 +77,9 @@ namespace DependencyAnalyzer
         /// <returns>True if name contains ">b__", otherwise false.</returns>
         internal bool IsAnonomous(out string methodName)
         {
-            if (Member.Name.Contains(">b__"))
+            if (Host.Name.Contains(">b__"))
             {
-                methodName = Member.Name.Split('>')[0].TrimStart('<');
+                methodName = Host.Name.Split('>')[0].TrimStart('<');
                 return true;
             }
 
@@ -93,9 +93,9 @@ namespace DependencyAnalyzer
         /// <returns>True if name contains ">k__BackingField", otherwise false.</returns>
         internal bool IsBackingField(out string propertyName)
         {
-            if (Member.Name.Contains(">k__BackingField"))
+            if (Host.Name.Contains(">k__BackingField"))
             {
-                propertyName = Member.Name.Split('>')[0].TrimStart('<');
+                propertyName = Host.Name.Split('>')[0].TrimStart('<');
                 return true;
             }
 
@@ -110,11 +110,11 @@ namespace DependencyAnalyzer
         internal bool IsGetter(out string propertyName)
         {
             propertyName = string.Empty;
-            if (!(Member is MethodInfo)) return false;
+            if (!(Host is MethodInfo)) return false;
 
-            if (Member.Name.Contains("get_"))
+            if (Host.Name.Contains("get_"))
             {
-                propertyName = Member.Name.Replace("get_", string.Empty);
+                propertyName = Host.Name.Replace("get_", string.Empty);
                 return true;
             }
 
@@ -129,11 +129,11 @@ namespace DependencyAnalyzer
         internal bool IsSetter(out string propertyName)
         {
             propertyName = string.Empty;
-            if (!(Member is MethodInfo)) return false;
+            if (!(Host is MethodInfo)) return false;
 
-            if (Member.Name.Contains("set_"))
+            if (Host.Name.Contains("set_"))
             {
-                propertyName = Member.Name.Replace("set_", string.Empty);
+                propertyName = Host.Name.Replace("set_", string.Empty);
                 return true;
             }
 
@@ -142,9 +142,9 @@ namespace DependencyAnalyzer
         }
         public override string ToString()
         {
-            string info = $"[{Member.MemberType}] ";
-            info += Member.DeclaringType is null ? string.Empty : Member.DeclaringType.FullName + '.';
-            info += Member is Type type ? type.FullName : Member.Name;
+            string info = $"[{Host.MemberType}] ";
+            info += Host.DeclaringType is null ? string.Empty : Host.DeclaringType.FullName + '.';
+            info += Host is Type type ? type.FullName : Host.Name;
             return info;
         }
     }

@@ -11,16 +11,32 @@ namespace DependencyAnalyzer
     public sealed class ClassReferenceInfo : ReferenceInfo
     {
         public ClassReferenceInfo? CompilerClass => IsCompilerClass ? null : NestedMembers.Find(n => n.IsCompilerClass);
-        internal List<MemberReferenceInfo> FlattenedMembers
+        /// <summary>
+        /// All MemberReferenceInfo objects that are within this object (not including ClassReferenceInfo objects)
+        /// </summary>
+        internal List<MemberReferenceInfo> FlattenedReferenceMembers
         {
             get
             {
                 List<MemberReferenceInfo> flattenedMembers = new(NonNestedMembers);
-                NestedMembers.ForEach(n => flattenedMembers.AddRange(n.FlattenedMembers));
+                NestedMembers.ForEach(n => flattenedMembers.AddRange(n.FlattenedReferenceMembers));
                 return flattenedMembers;
             }
         }
+        /// <summary>
+        /// All ClassReferenceInfo objects that are within this object (not including this object)
+        /// </summary>
+        internal List<ClassReferenceInfo> FlattenedReferenceTypes
+        {
+            get
+            {
+                List<ClassReferenceInfo> flattenedTypes = new(NestedMembers);
+                NestedMembers.ForEach(n => flattenedTypes.AddRange(n.FlattenedReferenceTypes));
+                return flattenedTypes;
+            }
+        }
         public IReadOnlyList<ReferenceInfo> Members => _members;
+        public string? Namespace => ((Type)Host).Namespace;
         internal List<ClassReferenceInfo> NestedMembers 
             => _members.FindAll(m => m is ClassReferenceInfo).ConvertAll<ClassReferenceInfo>(r => r as ClassReferenceInfo);
         internal List<MemberReferenceInfo> NonNestedMembers
@@ -40,6 +56,23 @@ namespace DependencyAnalyzer
             => _members.ForEach(m => m.FindReferencedMembers(referenceTypes));
         internal override void FindReferencingMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
             => _members.ForEach(m => m.FindReferencingMembers(referenceTypes));
+        internal string GetSimpleFormat(string tabs)
+        {
+            System.Text.StringBuilder builder = new();
+            builder.AppendLine($"{tabs}{FullName}");
+            tabs += '\t';
+            foreach (ReferenceInfo m in Members)
+            {
+                if (m is ClassReferenceInfo c) builder.Append(c.GetSimpleFormat(tabs));
+                else
+                {
+                    string info = $"{tabs}{m.FullName}";
+                    if (m.Host is MethodInfo) info += "()";
+                    builder.AppendLine(info);
+                }
+            }
+            return builder.ToString();
+        }
         internal void ImportMembers(ClassReferenceInfo nested)
         {
             foreach (var member in nested.Members)
@@ -48,6 +81,6 @@ namespace DependencyAnalyzer
                     _members.Add(member);
             }
         }
-        public override string ToString() => (Member as Type).FullName ?? Member.Name;
+        public override string ToString() => (Host as Type).FullName ?? Host.Name;
     }
 }
