@@ -71,7 +71,6 @@ namespace DependencyAnalyzer
                 MemberTypes.Event => GetEventReferences((EventInfo)member),
                 MemberTypes.Field => GetFieldReferences((FieldInfo)member),
                 MemberTypes.Method => GetMethodReferences((MethodInfo)member),
-                MemberTypes.Property => GetPropertyReferences((PropertyInfo)member),
                 _ => new()
             };
         }
@@ -120,19 +119,6 @@ namespace DependencyAnalyzer
         {
             if (param is null) return new();
             return GetTypeReferences(param.ParameterType);
-        }
-        private List<MemberInfo> GetPropertyReferences(PropertyInfo? member)
-        {
-            if (member is null) return new();
-            //type
-            List<MemberInfo> refMembers = GetTypeReferences(member.PropertyType);
-            //get & set accessor methods
-            List<MethodInfo> methods = new();
-            if (member.GetMethod is MethodInfo getM) methods.Add(getM);
-            if (member.SetMethod is MethodInfo setM) methods.Add(setM);
-            methods.ForEach(m => refMembers.AddRange(GetMethodReferences(m)));
-
-            return refMembers;
         }
         private List<MemberInfo> GetTypeReferences(Type? t)
         {

@@ -80,6 +80,6 @@ namespace DependencyAnalyzer
         /// <summary>
         /// Specifies that get and set methods will not appear in report
         /// </summary>
-        NoPropertyMethods = 5
+        NoPropertyMethods = 8
     }
 }

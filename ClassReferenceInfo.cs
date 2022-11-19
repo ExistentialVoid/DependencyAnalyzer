@@ -8,77 +8,37 @@ namespace DependencyAnalyzer
     /// <summary>
     /// Couples reference information to a type
     /// </summary>
-    public sealed class ClassReferenceInfo
+    public sealed class ClassReferenceInfo : ReferenceInfo
     {
-        public Type Class => _class;
-        internal bool IsCompilerGenerated => Class.Name.Contains(">");
-        public IReadOnlyList<MemberReferenceInfo> Members => _members;
-        public string Signature
+        public ClassReferenceInfo? CompilerClass => IsCompilerClass ? null : NestedMembers.Find(n => n.IsCompilerClass);
+        internal List<MemberReferenceInfo> FlattenedMembers
         {
             get
             {
-                if (_cachedSignature.Equals(string.Empty)) _cachedSignature = SignatureBuilder.GetSignature(_class);
-                return _cachedSignature;
+                List<MemberReferenceInfo> flattenedMembers = new(NonNestedMembers);
+                NestedMembers.ForEach(n => flattenedMembers.AddRange(n.FlattenedMembers));
+                return flattenedMembers;
             }
         }
+        public IReadOnlyList<ReferenceInfo> Members => _members;
+        internal List<ClassReferenceInfo> NestedMembers 
+            => _members.FindAll(m => m is ClassReferenceInfo).ConvertAll<ClassReferenceInfo>(r => r as ClassReferenceInfo);
+        internal List<MemberReferenceInfo> NonNestedMembers
+            => _members.FindAll(m => m is MemberReferenceInfo).ConvertAll<MemberReferenceInfo>(r => r as MemberReferenceInfo);
 
-        private string _cachedSignature = string.Empty;
-        private readonly Type _class;
-        private readonly List<MemberReferenceInfo> _members = new();
+        private readonly List<ReferenceInfo> _members = new();
 
 
-        public ClassReferenceInfo(Type type)
+        public ClassReferenceInfo(Type type) : base(type as TypeInfo)
         {
-            _class = type;
-            foreach (MemberInfo m in type.GetMembers(Architecture.Filter)) _members.Add(new(m));
+            foreach (MemberInfo m in type.GetMembers(Architecture.Filter))
+                _members.Add(m is TypeInfo t ? new ClassReferenceInfo(t) : new MemberReferenceInfo(m));
         }
 
 
-        internal void FindReferencedMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
-        {
-            _members.ForEach(m => m.FindReferencedMembers(referenceTypes));
-
-            // Flatten underlying members' references
-            foreach (var member in _members)
-            {
-                if (member.IsAnonomous(out string declaredMethodName))
-                {
-
-                    ClassReferenceInfo? cri = this;
-                    MemberReferenceInfo? declaredMethod = null;
-                    while (declaredMethod is null && cri is not null)
-                    {
-                        declaredMethod = cri.Members
-                            .ToList()
-                            .Find(m => m.Member.Name.Equals(declaredMethodName));
-                        cri = referenceTypes
-                            .ToList()
-                            .Find(c => cri.Class.DeclaringType != null && c.Class.HasSameMetadataDefinitionAs(cri.Class.DeclaringType));
-                    }
-
-                    foreach (var referencedMember in member.ReferencedMembers)
-                    {
-                        if (referencedMember.Key is not MethodInfo) continue;
-                        declaredMethod?.AddReferencedMember(referencedMember.Key);
-                    }
-                }
-                else if (member.IsGetter(out string propertyName))
-                {
-                    MemberReferenceInfo? property = _members.Find(m => m.Member.Name.Equals(propertyName));
-                    foreach (var referencedMember in member.ReferencedMembers)
-                        property?.AddReferencedMember(referencedMember.Key);
-                }
-                else if (member.IsSetter(out propertyName))
-                {
-                    MemberReferenceInfo? property = _members.Find(m => m.Member.Name.Equals(propertyName));
-                    foreach (var referencedMember in member.ReferencedMembers)
-                        property?.AddReferencedMember(referencedMember.Key);
-                }
-            }
-
-            // Flatten closures
-        }
-        internal void FindReferencingMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
+        internal override void FindReferencedMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
+            => _members.ForEach(m => m.FindReferencedMembers(referenceTypes));
+        internal override void FindReferencingMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
             => _members.ForEach(m => m.FindReferencingMembers(referenceTypes));
         internal void ImportMembers(ClassReferenceInfo nested)
         {
@@ -88,6 +48,6 @@ namespace DependencyAnalyzer
                     _members.Add(member);
             }
         }
-        public override string ToString() => _class.FullName ?? _class.Name;
+        public override string ToString() => (Member as Type).FullName ?? Member.Name;
     }
 }

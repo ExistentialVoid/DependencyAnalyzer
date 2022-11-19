@@ -375,9 +375,9 @@ namespace DependencyAnalyzer
 
                     if (methodbase is null) return string.Empty;
 
-                    return (methodbase.IsStatic ? " static " : " ") + 
-                        (methodbase is ConstructorInfo ? "[Void]" : ((MethodInfo)methodbase).ReturnType.Name)
-                        + $" {methodbase.ReflectedType?.Name}::{methodbase.Name}()";
+                    return (methodbase.IsStatic ? "static [" : " [") + 
+                        (methodbase is ConstructorInfo ? "Void" : ((MethodInfo)methodbase).ReturnType.Name)
+                        + $"] {methodbase.ReflectedType?.Name}::{methodbase.Name}()";
                 case OperandType.InlineR:
                     return R8(ref pos).ToString();
                 case OperandType.InlineSig:

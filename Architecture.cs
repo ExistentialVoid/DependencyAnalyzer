@@ -20,11 +20,9 @@ namespace DependencyAnalyzer
             }
         }
         public static StringBuilder InstructionLog { get; } = new();
-        internal int NamespaceCount => _referenceTypes.ConvertAll(c => c.Class.Namespace).Distinct().Count();
+        internal int NamespaceCount => ReferenceTypes.ConvertAll(c => c.Class.Namespace).Distinct().Count();
         public ReferenceBindingFlags ReferenceFilters { get; set; } = ReferenceBindingFlags.NonCompiler;
-        internal List<ClassReferenceInfo> ReferenceTypes => _referenceTypes;
-
-        private readonly List<ClassReferenceInfo> _referenceTypes = new();
+        internal List<ClassReferenceInfo> ReferenceTypes { get; } = new();
 
 
         public Architecture(Type[] types)
@@ -34,10 +32,12 @@ namespace DependencyAnalyzer
             types.ToList().ForEach(t => flattenedTypes.AddRange(t.GetNestedTypes()));
             foreach (Type t in flattenedTypes)
             {
+                TypeInfo T = t as TypeInfo;
+                if (T == null) throw new Exception();
                 if (t.IsEnum) continue;
 
                 ClassReferenceInfo cri = new(t);
-                _referenceTypes.Add(cri);
+                ReferenceTypes.Add(cri);
             }
         }
 
@@ -48,9 +48,56 @@ namespace DependencyAnalyzer
         /// <returns>Returns the results of the analysis</returns>
         public void Analyze()
         {
-            _referenceTypes.ForEach(t => t.FindReferencedMembers(_referenceTypes));
-            _referenceTypes.ForEach(t => t.FindReferencingMembers(_referenceTypes));
-        } 
+            ReferenceTypes.ForEach(t => t.FindReferencedMembers(ReferenceTypes));
+            ReferenceTypes.ForEach(t => t.FindReferencingMembers(ReferenceTypes));
+
+            ApplyReferenceModifications();
+        }
+        /// <summary>
+        /// Handle unique manipulations to references
+        /// </summary>
+        private void ApplyReferenceModifications()
+        {
+            foreach (var type in ReferenceTypes)
+            {
+                // Flatten underlying members' references
+                foreach (var member in type.Members)
+                {
+                    if (member.IsAnonomous(out string declaredMethodName))
+                    {
+                        ClassReferenceInfo? cri = type;
+                        MemberReferenceInfo? declaredMethod = null;
+                        // when type is nested
+                        while (declaredMethod is null && cri is not null)
+                        {
+                            declaredMethod = cri.Members
+                                .ToList()
+                                .Find(m => m.Member.Name.Equals(declaredMethodName));
+                            cri = ReferenceTypes
+                                .ToList()
+                                .Find(c => cri.Class.DeclaringType != null && c.Class.HasSameMetadataDefinitionAs(cri.Class.DeclaringType));
+                        }
+
+                        foreach (var referencedMember in member.ReferencedMembers)
+                        {
+                            if (referencedMember.Key is not MethodInfo) continue;
+                            declaredMethod?.AddReferencedMember(referencedMember);
+                        }
+                    }
+                    else if (member.IsGetter(out string propertyName) || member.IsSetter(out propertyName))
+                    {
+                        MemberReferenceInfo? property = type.Members.ToList().Find(m => m.Member.Name.Equals(propertyName));
+                        if (property is not null)
+                        {
+                            foreach (var referencedMember in member.ReferencedMembers)
+                                property.AddReferencedMember(referencedMember);
+                            foreach (var referencingMember in member.ReferencingMembers)
+                                property.AddReferencingMember(referencingMember);
+                        }
+                    }
+                }
+            }
+        }
         private string GetFormattedClass(ClassReferenceInfo? cri, ReportFormat format)
         {
             if (cri is null) return string.Empty;
@@ -78,7 +125,7 @@ namespace DependencyAnalyzer
             {
                 if (mri.Member is TypeInfo ti)
                 {
-                    builder.Append(GetFormattedClass(_referenceTypes.Find(rt => rt.Class.HasSameMetadataDefinitionAs(ti)), format));
+                    builder.Append(GetFormattedClass(ReferenceTypes.Find(rt => rt.Class.HasSameMetadataDefinitionAs(ti)), format));
                     continue;
                 }
 
@@ -142,7 +189,7 @@ namespace DependencyAnalyzer
             // 6 : stloc.0
             // 8 : ldarg.0
 
-            foreach (ClassReferenceInfo cri in _referenceTypes.FindAll(rt => !rt.Class.IsNested))
+            foreach (ClassReferenceInfo cri in ReferenceTypes.FindAll(rt => !rt.Class.IsNested))
                 // 9 : call  List`1 Architecture::get_ReferenceTypes()
                 // 14 : ldsfld [Predicate`1] <>c::<>9__10_0
                 // 19 : dup
@@ -205,7 +252,7 @@ namespace DependencyAnalyzer
             // 174 : stloc.s 5
             // 176 : br.s -78
             string results = builder.ToString();
-            if (NamespaceCount == 1) results = results.Replace($"{_referenceTypes[0].Class.Namespace}.", string.Empty);
+            if (NamespaceCount == 1) results = results.Replace($"{ReferenceTypes[0].Class.Namespace}.", string.Empty);
             return results;
             // 178 : ldloc.s 5
             // 180 : ret
