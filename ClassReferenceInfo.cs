@@ -66,8 +66,19 @@ namespace DependencyAnalyzer
                 if (m is ClassReferenceInfo c) builder.Append(c.GetSimpleFormat(tabs));
                 else
                 {
+                    MemberReferenceInfo M = m as MemberReferenceInfo;
+                    if (M.IsGetter(out _) || M.IsSetter(out _)) continue;
+                    else if (M.IsBackingField(out _)) continue;
+
                     string info = $"{tabs}{m.FullName}";
                     if (m.Host is MethodInfo) info += "()";
+                    else if (m.Host is PropertyInfo property)
+                    {
+                        info += "{ ";
+                        if (property.GetMethod is not null) info += "get; ";
+                        if (property.SetMethod is not null) info += "set; ";
+                        info += '}';
+                    } 
                     builder.AppendLine(info);
                 }
             }

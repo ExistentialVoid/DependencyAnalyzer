@@ -326,7 +326,8 @@ namespace DependencyAnalyzer
             List<Instruction> list = new();
             list.AddRange(InstructionStream.FindAll(I => I.Code.Name?.Contains("call") ?? false));
             list.AddRange(InstructionStream.FindAll(I => I.Code.Name?.Contains("fld") ?? false));
-            list.AddRange(InstructionStream.FindAll(I => I.Code.Name?.Equals("newobj") ?? false));;
+            list.AddRange(InstructionStream.FindAll(I => I.Code.Name?.Equals("newobj") ?? false));
+            list.AddRange(InstructionStream.FindAll(I => I.Code.Name?.Equals("ldftn") ?? false));
             return list;
         }
         /// <summary>
