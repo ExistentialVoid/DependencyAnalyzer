@@ -34,18 +34,21 @@ namespace DependencyAnalyzer
 
                 if (member.Host.DeclaringType != null)
                 {
-                    bool siblingRefPredicate(MemberInfo m) => m.DeclaringType != null && m.DeclaringType == member.Host.DeclaringType;
+                    bool isSiblingReference(MemberInfo m) => m.DeclaringType != null && m.DeclaringType == member.Host.DeclaringType;
                     if (Filter.HasFlag(ReferenceBindingFlags.NoSiblingReferences) &&
-                        (member.ReferencedMembers.Keys.ToList().Exists(siblingRefPredicate) ||
-                        member.ReferencingMembers.Keys.ToList().Exists(siblingRefPredicate))) continue;
+                        (member.ReferencedMembers.Keys.ToList().Exists(isSiblingReference)
+                        || member.ReferencingMembers.Keys.ToList().Exists(isSiblingReference))) continue;
                 }
 
                 if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) && 
                     member.ReferencedMembers.Count + member.ReferencingMembers.Count == 0) continue;
 
-                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) &&
-                    (member.ReferencedMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Host.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count
-                    + member.ReferencingMembers.ToList().FindAll(m => !members.ToList().Find(mri => mri.Host.HasSameMetadataDefinitionAs(m.Key))?.IsCompilerGenerated ?? true).Count == 0)) continue;
+                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences))
+                {
+                    bool hasMember(MemberInfo m) => !members.ToList().Find(mri => mri.Host.HasSameMetadataDefinitionAs(m))?.IsCompilerGenerated ?? true;
+                    if (member.ReferencedMembers.Keys.ToList().FindAll(hasMember).Count
+                        + member.ReferencingMembers.Keys.ToList().FindAll(hasMember).Count == 0) continue;
+                }
 
                 filtered.Add(member);
             }

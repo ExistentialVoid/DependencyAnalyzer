@@ -10,36 +10,25 @@ namespace DependencyAnalyzer
     {
         public static BindingFlags Filter { get; } = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
-        internal List<MemberReferenceInfo> FlattenedReferenceMembers
-        {
-            get
-            {
-                List<MemberReferenceInfo> members = new();
-                ReferenceTypes.ForEach(cri => members.AddRange(cri.FlattenedReferenceMembers));
-                return members;
-            }
-        }
-        internal List<ClassReferenceInfo> FlattenedReferenceTypes
-        {
-            get
-            {
-                List<ClassReferenceInfo> classes = new(ReferenceTypes);
-                ReferenceTypes.ForEach(c => classes.AddRange(c.FlattenedReferenceTypes));
-                return classes;
-            }
-        }
+        internal List<MemberReferenceInfo> FlattenedReferenceMembers { get; }
+        internal List<ClassReferenceInfo> FlattenedReferenceTypes { get; }
         public static StringBuilder InstructionLog { get; } = new();
         public ReferenceBindingFlags ReferenceFilters { get; set; } = ReferenceBindingFlags.NonCompiler;
-        private List<ClassReferenceInfo> ReferenceTypes { get; } = new();
+        private List<ClassReferenceInfo> ReferenceTypes { get; }
 
 
         public Architecture(Type[] types)
         {
+            ReferenceTypes = new();
+            FlattenedReferenceTypes = new();
+            FlattenedReferenceMembers = new();
             foreach (Type t in types)
             {
-                if (t.IsEnum) continue;
-                ClassReferenceInfo cri = new(t as TypeInfo);
+                if (t.IsEnum || t.IsNested) continue;
+                ClassReferenceInfo cri = new(t);
                 ReferenceTypes.Add(cri);
+                FlattenedReferenceTypes.AddRange(cri.FlattenedTypes);
+                FlattenedReferenceMembers.AddRange(cri.FlattenedMembers);
             }
         }
 
@@ -50,9 +39,17 @@ namespace DependencyAnalyzer
         /// <returns>Returns the results of the analysis</returns>
         public void Analyze()
         {
+            // Collect all references by reading instruction set of each member
             FlattenedReferenceTypes.ForEach(t => t.FindReferencedMembers(FlattenedReferenceTypes));
+
+            // critical to relay closure method references at this point, before reflecting Refereced onto Referencing
+            List<MemberReferenceInfo> nonCompilerMembers = FlattenedReferenceMembers.FindAll(mri => !mri.IsCompilerGenerated);
+            nonCompilerMembers.ForEach(mri => mri.TransferClosureReferences(FlattenedReferenceMembers));
+
+            // Coordinate reversal of found references to record referencing (no need to re-read metadata)
             FlattenedReferenceTypes.ForEach(t => t.FindReferencingMembers(FlattenedReferenceTypes));
 
+            // Apply client's ReferenceBindingFlags, and otherwise manditory manipulations
             ApplyReferenceModifications();
         }
         /// <summary>
@@ -60,10 +57,10 @@ namespace DependencyAnalyzer
         /// </summary>
         private void ApplyReferenceModifications()
         {
-            foreach (var type in FlattenedReferenceTypes)
+            foreach (ClassReferenceInfo type in FlattenedReferenceTypes)
             {
                 // Flatten underlying members' references
-                foreach (var member in type.FlattenedReferenceMembers)
+                foreach (MemberReferenceInfo member in type.FlattenedMembers)
                 {
                     if (member.IsAnonomous(out string declaredMethodName))
                     {
@@ -72,7 +69,7 @@ namespace DependencyAnalyzer
                         // when type is nested
                         while (declaredMethod is null && cri is not null)
                         {
-                            declaredMethod = cri.FlattenedReferenceMembers
+                            declaredMethod = cri.FlattenedMembers
                                 .ToList()
                                 .Find(m => m.Host.Name.Equals(declaredMethodName));
                             cri = FlattenedReferenceTypes
@@ -122,7 +119,7 @@ namespace DependencyAnalyzer
             indents += '\t';
 
             ReferenceFilter filter = new(ReferenceFilters);
-            List<MemberReferenceInfo> filteredMembers = filter.ApplyFilterTo(cri.FlattenedReferenceMembers.ToList()).ToList();
+            List<MemberReferenceInfo> filteredMembers = filter.ApplyFilterTo(cri.FlattenedMembers.ToList()).ToList();
             foreach (MemberReferenceInfo mri in filteredMembers)
             {
                 if (mri.Host is TypeInfo ti)
@@ -188,8 +185,7 @@ namespace DependencyAnalyzer
         {
             StringBuilder builder = new();
 
-            bool shortFormat = true;
-            if (shortFormat)
+            if (format == ReportFormat.Short)
             {
                 ReferenceTypes.ForEach(c => builder.Append(c.GetSimpleFormat(string.Empty)));
                 return builder.ToString();
@@ -204,6 +200,6 @@ namespace DependencyAnalyzer
             return results;
         }
 
-        public enum ReportFormat { Default, Basic, Detailed, Signature }
+        public enum ReportFormat { Default, Basic, Detailed, Signature, Short }
     }
 }

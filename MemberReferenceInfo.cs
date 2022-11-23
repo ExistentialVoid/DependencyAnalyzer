@@ -8,13 +8,10 @@ namespace DependencyAnalyzer
     /// <summary>
     /// Couples a member with other members the it references and that reference it
     /// </summary>
-    public sealed class MemberReferenceInfo : ReferenceInfo
+    internal sealed class MemberReferenceInfo : ReferenceInfo
     {
-        public IReadOnlyDictionary<MemberInfo, int> ReferencedMembers => _referencedMembers;
-        public IReadOnlyDictionary<MemberInfo, int> ReferencingMembers => _referencingMembers;
-
-        private readonly Dictionary<MemberInfo, int> _referencedMembers = new();
-        private Dictionary<MemberInfo, int> _referencingMembers = new();
+        internal Dictionary<MemberInfo, int> ReferencedMembers { get; private set; } = new();
+        internal Dictionary<MemberInfo, int> ReferencingMembers { get; private set; } = new();
 
 
         public MemberReferenceInfo(MemberInfo member) : base(member) { }
@@ -22,51 +19,42 @@ namespace DependencyAnalyzer
 
         internal void AddReferencedMember(MemberInfo member, int count = 1)
         {
-            MemberInfo existingRef = _referencedMembers
+            MemberInfo existingRef = ReferencedMembers
                                         .ToList()
                                         .Find(m => m.Key.HasSameMetadataDefinitionAs(member))
                                         .Key;
 
-            if (existingRef != null) _referencedMembers[existingRef] += count;
+            if (existingRef != null) ReferencedMembers[existingRef] += count;
             else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
-                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) _referencedMembers.Add(member, count);
+                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) ReferencedMembers.Add(member, count);
         }
         internal void AddReferencedMember(KeyValuePair<MemberInfo, int> refMember) => AddReferencedMember(refMember.Key, refMember.Value);
         internal void AddReferencingMember(MemberInfo member, int count = 1)
         {
-            MemberInfo existingRef = _referencingMembers
+            MemberInfo existingRef = ReferencingMembers
                                         .ToList()
                                         .Find(m => m.Key.HasSameMetadataDefinitionAs(member)).Key;
 
-            if (existingRef != null) _referencingMembers[existingRef] += count;
+            if (existingRef != null) ReferencingMembers[existingRef] += count;
             else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
-                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) _referencingMembers.Add(member, count);
+                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) ReferencingMembers.Add(member, count);
         }
         internal void AddReferencingMember(KeyValuePair<MemberInfo, int> refMember) => AddReferencingMember(refMember.Key, refMember.Value);
-        internal override void FindReferencedMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
+        internal override void FindReferencedMembers(List<ClassReferenceInfo> referenceTypes)
         {
-            MemberInterpreter interpreter = new(referenceTypes.ToList().ConvertAll(c => c.Host as Type));
-            List<MemberInfo> referencedMembers = interpreter.GetReferencedMembers(Host);
+            ReferencedMembers = new();
+            MemberInterpreter interpreter = new(referenceTypes.ConvertAll(c => c.Host as Type));
+            List<MemberInfo> refMembers = interpreter.GetReferencedMembers(Host);
             
-            List<ClassReferenceInfo> closures = referenceTypes.ToList().FindAll(c => c.IsClosure);
-            foreach (var member in referencedMembers)
-            {
-                if (member.DeclaringType is Type t && closures.Exists(c => c.Host.HasSameMetadataDefinitionAs(t)))
-                {
-                    List<MemberInfo> closureMethodReferencedMembers = interpreter.GetReferencedMembers(member);
-                    foreach (var closureMember in closureMethodReferencedMembers)
-                        AddReferencedMember(closureMember);
-                }
-                else AddReferencedMember(member);
-            }
+            foreach (MemberInfo member in refMembers) AddReferencedMember(member);
         }
-        internal override void FindReferencingMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
+        internal override void FindReferencingMembers(List<ClassReferenceInfo> referenceTypes)
         {
-            _referencingMembers = new();
+            ReferencingMembers = new();
             foreach (ClassReferenceInfo cri in referenceTypes)
             {
-                cri.FlattenedReferenceMembers
-                    .FindAll(m => m.Host.HasSameMetadataDefinitionAs(Host))
+                cri.FlattenedMembers
+                    .FindAll(m => m.ReferencedMembers.Keys.ToList().Exists(rm => rm.HasSameMetadataDefinitionAs(Host)))
                     .ForEach(m => AddReferencingMember(m.Host));
             }
         }
@@ -146,6 +134,29 @@ namespace DependencyAnalyzer
             info += Host.DeclaringType is null ? string.Empty : Host.DeclaringType.FullName + '.';
             info += Host is Type type ? type.FullName : Host.Name;
             return info;
+        }
+        /// <summary>
+        /// Relay all members in ReferencedMembers who reference a compiled generated type's method or a complied generated method
+        /// </summary>
+        /// <param name="referenceMembers">All relevant method information</param>
+        internal void TransferClosureReferences(List<MemberReferenceInfo> referenceMembers)
+        {
+            List<MemberReferenceInfo> generated = new();
+            foreach (MemberInfo mi in ReferencedMembers.Keys)
+            {
+                MemberReferenceInfo mri = new(mi);
+                if (mri.IsCompilerGenerated)
+                {
+                    mri = referenceMembers.Find(rm => rm.Equals(mri));
+                    generated.Add(mri);
+                }
+            }
+
+            if (generated.Count > 0)
+                generated.ForEach(mri => mri.TransferClosureReferences(referenceMembers));
+
+            foreach (MemberReferenceInfo mri in generated)
+                mri.ReferencedMembers.ToList().ForEach(rm => AddReferencedMember(rm));
         }
     }
 }

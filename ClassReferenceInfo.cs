@@ -8,54 +8,46 @@ namespace DependencyAnalyzer
     /// <summary>
     /// Couples reference information to a type
     /// </summary>
-    public sealed class ClassReferenceInfo : ReferenceInfo
+    internal sealed class ClassReferenceInfo : ReferenceInfo
     {
-        public ClassReferenceInfo? CompilerClass => IsCompilerClass ? null : NestedMembers.Find(n => n.IsCompilerClass);
         /// <summary>
         /// All MemberReferenceInfo objects that are within this object (not including ClassReferenceInfo objects)
         /// </summary>
-        internal List<MemberReferenceInfo> FlattenedReferenceMembers
-        {
-            get
-            {
-                List<MemberReferenceInfo> flattenedMembers = new(NonNestedMembers);
-                NestedMembers.ForEach(n => flattenedMembers.AddRange(n.FlattenedReferenceMembers));
-                return flattenedMembers;
-            }
-        }
+        internal List<MemberReferenceInfo> FlattenedMembers { get; }
         /// <summary>
         /// All ClassReferenceInfo objects that are within this object (not including this object)
         /// </summary>
-        internal List<ClassReferenceInfo> FlattenedReferenceTypes
+        internal List<ClassReferenceInfo> FlattenedTypes { get; }
+        internal List<MemberReferenceInfo> Members { get; }
+        public string? Namespace => ((Type)Host).Namespace;
+        internal List<ClassReferenceInfo> NestedClasses { get; }
+
+
+        public ClassReferenceInfo(Type type): base(type)
         {
-            get
+            Members = new();
+            NestedClasses = new();
+            foreach (MemberInfo m in type.GetMembers(Architecture.Filter))
             {
-                List<ClassReferenceInfo> flattenedTypes = new(NestedMembers);
-                NestedMembers.ForEach(n => flattenedTypes.AddRange(n.FlattenedReferenceTypes));
-                return flattenedTypes;
+                if (m is Type t) NestedClasses.Add(new(t));
+                else Members.Add(new(m));
+            }
+
+            FlattenedMembers = new(Members);
+            FlattenedTypes = new();
+            FlattenedTypes.Add(this);
+            foreach (ClassReferenceInfo cri in NestedClasses)
+            {
+                FlattenedMembers.AddRange(cri.FlattenedMembers);
+                FlattenedTypes.AddRange(cri.FlattenedTypes);
             }
         }
-        public IReadOnlyList<ReferenceInfo> Members => _members;
-        public string? Namespace => ((Type)Host).Namespace;
-        internal List<ClassReferenceInfo> NestedMembers 
-            => _members.FindAll(m => m is ClassReferenceInfo).ConvertAll<ClassReferenceInfo>(r => r as ClassReferenceInfo);
-        internal List<MemberReferenceInfo> NonNestedMembers
-            => _members.FindAll(m => m is MemberReferenceInfo).ConvertAll<MemberReferenceInfo>(r => r as MemberReferenceInfo);
-
-        private readonly List<ReferenceInfo> _members = new();
 
 
-        public ClassReferenceInfo(Type type) : base(type as TypeInfo)
-        {
-            foreach (MemberInfo m in type.GetMembers(Architecture.Filter))
-                _members.Add(m is TypeInfo t ? new ClassReferenceInfo(t) : new MemberReferenceInfo(m));
-        }
-
-
-        internal override void FindReferencedMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
-            => _members.ForEach(m => m.FindReferencedMembers(referenceTypes));
-        internal override void FindReferencingMembers(IEnumerable<ClassReferenceInfo> referenceTypes)
-            => _members.ForEach(m => m.FindReferencingMembers(referenceTypes));
+        internal override void FindReferencedMembers(List<ClassReferenceInfo> referenceTypes)
+            => Members.ForEach(m => m.FindReferencedMembers(referenceTypes));
+        internal override void FindReferencingMembers(List<ClassReferenceInfo> referenceTypes)
+            => Members.ForEach(m => m.FindReferencingMembers(referenceTypes));
         internal string GetSimpleFormat(string tabs)
         {
             System.Text.StringBuilder builder = new();
@@ -89,7 +81,7 @@ namespace DependencyAnalyzer
             foreach (var member in nested.Members)
             {
                 //if (!_members.Exists(m => m.Member.HasSameMetadataDefinitionAs(member.Member)) && !member.IsCompilerGenerated)
-                    _members.Add(member);
+                Members.Add(member);
             }
         }
         public override string ToString() => (Host as Type).FullName ?? Host.Name;
