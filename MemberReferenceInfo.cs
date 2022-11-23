@@ -12,6 +12,7 @@ namespace DependencyAnalyzer
     {
         internal Dictionary<MemberInfo, int> ReferencedMembers { get; private set; } = new();
         internal Dictionary<MemberInfo, int> ReferencingMembers { get; private set; } = new();
+        internal List<MemberInfo> PendingReferenceRemovals { get; private set; } = new();
 
 
         public MemberReferenceInfo(MemberInfo member) : base(member) { }
@@ -25,8 +26,9 @@ namespace DependencyAnalyzer
                                         .Key;
 
             if (existingRef != null) ReferencedMembers[existingRef] += count;
-            else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
-                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) ReferencedMembers.Add(member, count);
+            else ReferencedMembers.Add(member, count);
+            //else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
+            //    (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) ReferencedMembers.Add(member, count);
         }
         internal void AddReferencedMember(KeyValuePair<MemberInfo, int> refMember) => AddReferencedMember(refMember.Key, refMember.Value);
         internal void AddReferencingMember(MemberInfo member, int count = 1)
@@ -128,35 +130,56 @@ namespace DependencyAnalyzer
             propertyName = string.Empty;
             return false;
         }
+        /// <summary>
+        /// Relay all getter and setter referenced members and remove getter and setter references.
+        /// </summary>
+        /// <param name="referenceClasses">All relevant class information</param>
+        /// <param name="referenceMembers">All relevant method information</param>
+        internal void ReplaceAccessorReferences(List<ClassReferenceInfo> referenceClasses, List<MemberReferenceInfo> referenceMembers)
+        {
+            Dictionary<MemberInfo, int> copyReferencedMembers = new(ReferencedMembers);
+            foreach (var rm in copyReferencedMembers)
+            {
+                if (rm.Key is TypeInfo) continue;
+
+                MemberReferenceInfo targetReference = referenceMembers.Find(m => m.Host.HasSameMetadataDefinitionAs(rm.Key));
+                if (targetReference.IsGetter(out string propertyName) || targetReference.IsSetter(out propertyName))
+                {
+                    ClassReferenceInfo targetReferenceClass = referenceClasses.Find(c => c.Host.HasSameMetadataDefinitionAs(rm.Key.DeclaringType));
+                    MemberReferenceInfo property = targetReferenceClass.Members.Find(m => m.Host.Name.Equals(propertyName));
+                    if (!PendingReferenceRemovals.Contains(rm.Key)) PendingReferenceRemovals.Add(rm.Key);
+                    AddReferencedMember(property.Host, rm.Value);
+                    foreach (var referencedMember in targetReference.ReferencedMembers)
+                        property.AddReferencedMember(referencedMember);
+                }
+            }
+        }
+        /// <summary>
+        /// Relay all members in ReferencedMembers who reference a compiled generated type's method or a complied generated method and remove the generated's reference
+        /// </summary>
+        /// <param name="referenceMembers">All relevant method information</param>
+        internal void ReplaceClosureReferences(List<MemberReferenceInfo> referenceMembers)
+        {
+            Dictionary<MemberInfo, int> copyReferencedMembers = new(ReferencedMembers);
+            foreach (var rm in copyReferencedMembers)
+            {
+                if (rm.Key is TypeInfo) continue;
+
+                MemberReferenceInfo? targetReference = referenceMembers.Find(m => m.Host.HasSameMetadataDefinitionAs(rm.Key));
+                if (targetReference.IsCompilerGenerated)
+                {
+                    if (!PendingReferenceRemovals.Contains(rm.Key)) PendingReferenceRemovals.Add(rm.Key);
+                    targetReference.ReplaceClosureReferences(referenceMembers); // flatten closures' references
+                    targetReference.ReferencedMembers.ToList().ForEach(m => AddReferencedMember(m));
+                }
+            }
+        }
         public override string ToString()
         {
             string info = $"[{Host.MemberType}] ";
             info += Host.DeclaringType is null ? string.Empty : Host.DeclaringType.FullName + '.';
             info += Host is Type type ? type.FullName : Host.Name;
             return info;
-        }
-        /// <summary>
-        /// Relay all members in ReferencedMembers who reference a compiled generated type's method or a complied generated method
-        /// </summary>
-        /// <param name="referenceMembers">All relevant method information</param>
-        internal void TransferClosureReferences(List<MemberReferenceInfo> referenceMembers)
-        {
-            List<MemberReferenceInfo> generated = new();
-            foreach (MemberInfo mi in ReferencedMembers.Keys)
-            {
-                MemberReferenceInfo mri = new(mi);
-                if (mri.IsCompilerGenerated)
-                {
-                    mri = referenceMembers.Find(rm => rm.Equals(mri));
-                    generated.Add(mri);
-                }
-            }
-
-            if (generated.Count > 0)
-                generated.ForEach(mri => mri.TransferClosureReferences(referenceMembers));
-
-            foreach (MemberReferenceInfo mri in generated)
-                mri.ReferencedMembers.ToList().ForEach(rm => AddReferencedMember(rm));
         }
     }
 }

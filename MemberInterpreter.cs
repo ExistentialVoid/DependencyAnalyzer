@@ -71,6 +71,7 @@ namespace DependencyAnalyzer
                 MemberTypes.Event => GetEventReferences((EventInfo)member),
                 MemberTypes.Field => GetFieldReferences((FieldInfo)member),
                 MemberTypes.Method => GetMethodReferences((MethodInfo)member),
+                MemberTypes.Property => GetPropertyReferences((PropertyInfo)member),
                 _ => new()
             };
         }
@@ -90,7 +91,6 @@ namespace DependencyAnalyzer
                             .ToList()
                             .FindAll(m => instruction.Operand.Contains($"{type.Name}::{m.Name}"));
                     refMembers.AddRange(matchedMembers);
-                    //if (instruction.Operand.Contains($" {type.Name}::")) refMembers.Add(type);
                 }
             }
 
@@ -119,6 +119,17 @@ namespace DependencyAnalyzer
         {
             if (param is null) return new();
             return GetTypeReferences(param.ParameterType);
+        }
+        private List<MemberInfo> GetPropertyReferences(PropertyInfo? property)
+        {
+            if (property is null) return new();
+
+            List<MemberInfo> methods = new();
+            MethodInfo? accessor = property.GetMethod;
+            if (accessor is not null) methods.AddRange(GetMethodReferences(accessor));
+            accessor = property.SetMethod;
+            if (accessor is not null) methods.AddRange(GetMethodReferences(accessor));
+            return methods;
         }
         private List<MemberInfo> GetTypeReferences(Type? t)
         {

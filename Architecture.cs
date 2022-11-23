@@ -8,7 +8,7 @@ namespace DependencyAnalyzer
 {
     public class Architecture
     {
-        public static BindingFlags Filter { get; } = BindingFlags.Public | BindingFlags.NonPublic
+        public readonly static BindingFlags Filter = BindingFlags.Public | BindingFlags.NonPublic
             | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         internal List<MemberReferenceInfo> FlattenedReferenceMembers { get; }
         internal List<ClassReferenceInfo> FlattenedReferenceTypes { get; }
@@ -42,60 +42,36 @@ namespace DependencyAnalyzer
             // Collect all references by reading instruction set of each member
             FlattenedReferenceTypes.ForEach(t => t.FindReferencedMembers(FlattenedReferenceTypes));
 
-            // critical to relay closure method references at this point, before reflecting Refereced onto Referencing
+
+            // It is critical to adjust referencing relays between FindReferencedTypes and FindReferencingTypes
+            List<MemberReferenceInfo> accessorReferencers = FlattenedReferenceMembers
+                .FindAll(mri => mri.ReferencedMembers.Keys.ToList().Exists(rm => rm.Name.Contains("et_")));
+            foreach (var mri in accessorReferencers)
+            {
+                // replace MethodInfo (get_/set_) with the PropertyInfo
+                List<KeyValuePair<MemberInfo, int>> accessorReferences = 
+                    mri.ReferencedMembers.ToList().FindAll(r => r.Key.Name.Contains("et_"));
+                foreach (var r in accessorReferences)
+                {
+                    MemberReferenceInfo dummyMri = new(r.Key);
+                    _ = dummyMri.IsGetter(out string propertyName) || dummyMri.IsSetter(out propertyName);
+                    ClassReferenceInfo propertyClass = FlattenedReferenceTypes.Find(c => c.Host.HasSameMetadataDefinitionAs(r.Key.DeclaringType));
+                    MemberReferenceInfo property = propertyClass.Members.Find(m => m.Host.Name.Equals(propertyName));
+                    mri.ReferencedMembers.Remove(r.Key);
+                    mri.AddReferencedMember(property.Host, r.Value);
+                }
+            }
+
+            //FlattenedReferenceMembers.ForEach(mri => mri.ReplaceAccessorReferences(FlattenedReferenceTypes, FlattenedReferenceMembers));
+
             List<MemberReferenceInfo> nonCompilerMembers = FlattenedReferenceMembers.FindAll(mri => !mri.IsCompilerGenerated);
-            nonCompilerMembers.ForEach(mri => mri.TransferClosureReferences(FlattenedReferenceMembers));
+            nonCompilerMembers.ForEach(mri => mri.ReplaceClosureReferences(FlattenedReferenceMembers));
+
+            FlattenedReferenceMembers.ForEach(mri => mri.PendingReferenceRemovals.ForEach(rem => mri.ReferencedMembers.Remove(rem)));
+
 
             // Coordinate reversal of found references to record referencing (no need to re-read metadata)
             FlattenedReferenceTypes.ForEach(t => t.FindReferencingMembers(FlattenedReferenceTypes));
-
-            // Apply client's ReferenceBindingFlags, and otherwise manditory manipulations
-            ApplyReferenceModifications();
-        }
-        /// <summary>
-        /// Handle unique manipulations to references
-        /// </summary>
-        private void ApplyReferenceModifications()
-        {
-            foreach (ClassReferenceInfo type in FlattenedReferenceTypes)
-            {
-                // Flatten underlying members' references
-                foreach (MemberReferenceInfo member in type.FlattenedMembers)
-                {
-                    if (member.IsAnonomous(out string declaredMethodName))
-                    {
-                        ClassReferenceInfo? cri = type;
-                        MemberReferenceInfo? declaredMethod = null;
-                        // when type is nested
-                        while (declaredMethod is null && cri is not null)
-                        {
-                            declaredMethod = cri.FlattenedMembers
-                                .ToList()
-                                .Find(m => m.Host.Name.Equals(declaredMethodName));
-                            cri = FlattenedReferenceTypes
-                                .ToList()
-                                .Find(c => cri.Host.DeclaringType != null && c.Host.HasSameMetadataDefinitionAs(cri.Host.DeclaringType));
-                        }
-
-                        foreach (var referencedMember in member.ReferencedMembers)
-                        {
-                            if (referencedMember.Key is not MethodInfo) continue;
-                            declaredMethod?.AddReferencedMember(referencedMember);
-                        }
-                    }
-                    else if (member.IsGetter(out string propertyName) || member.IsSetter(out propertyName))
-                    {
-                        MemberReferenceInfo? property = type.Members.ToList().Find(m => m.Host.Name.Equals(propertyName)) as MemberReferenceInfo;
-                        if (property is not null)
-                        {
-                            foreach (var referencedMember in member.ReferencedMembers)
-                                property.AddReferencedMember(referencedMember);
-                            foreach (var referencingMember in member.ReferencingMembers)
-                                property.AddReferencingMember(referencingMember);
-                        }
-                    }
-                }
-            }
         }
         private string GetFormattedClass(ClassReferenceInfo? cri, ReportFormat format)
         {

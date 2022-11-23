@@ -30,8 +30,6 @@ namespace DependencyAnalyzer
             {
                 if (Filter.HasFlag(ReferenceBindingFlags.NonCompiler) && member.IsCompilerGenerated) continue;
 
-                if (Filter.HasFlag(ReferenceBindingFlags.NoPropertyMethods) && (member.IsGetter(out _) || member.IsSetter(out _))) continue; 
-
                 if (member.Host.DeclaringType != null)
                 {
                     bool isSiblingReference(MemberInfo m) => m.DeclaringType != null && m.DeclaringType == member.Host.DeclaringType;
@@ -80,9 +78,5 @@ namespace DependencyAnalyzer
         /// Specifies that compiler-generated members will not appear in report
         /// </summary>
         NonCompiler = 4,
-        /// <summary>
-        /// Specifies that get and set methods will not appear in report
-        /// </summary>
-        NoPropertyMethods = 8
     }
 }

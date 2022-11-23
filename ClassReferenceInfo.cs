@@ -32,6 +32,8 @@ namespace DependencyAnalyzer
                 if (m is Type t) NestedClasses.Add(new(t));
                 else Members.Add(new(m));
             }
+            // properties will be handled on the MemberInterpreter
+            Members.RemoveAll(mri => mri.IsGetter(out _) || mri.IsSetter(out _));
 
             FlattenedMembers = new(Members);
             FlattenedTypes = new();
