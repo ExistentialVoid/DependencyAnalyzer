@@ -128,7 +128,8 @@ namespace DependencyAnalyzer
         /// <param name="collection">The collection of references</param>
         internal void ReplaceAccessors(ReferenceCollection collection)
         {
-            foreach (var reference in collection)
+            ReferenceCollection dupCollection = new(collection);
+            foreach (var reference in dupCollection)
             {
                 if (reference.Key is MemberReferenceInfo mri && mri.IsAccessor(out MemberReferenceInfo property))
                     collection.Replace(reference.Key, property, reference.Value);
