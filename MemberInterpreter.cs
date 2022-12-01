@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 
@@ -10,26 +11,30 @@ namespace DependencyAnalyzer
         /*  Do not handle logic for compiler types, handling member impartially
          */
 
+        private readonly TextWriter Log;
         /// <summary>
-        /// The constructor-provided types without closures
+        /// All relevant Type information
         /// </summary>
-        private readonly List<Type> types;
+        private readonly List<Type> Types;
+        private readonly List<TypeReferenceInfo> TypeReferences;
 
 
         /// <summary>
         /// 
         /// </summary>
         /// <param name="types">All types to be considered</param>
-        public MemberInterpreter(List<Type> types)
+        public MemberInterpreter(List<TypeReferenceInfo> types)
         {
-            this.types = types.FindAll(t => !t.Name.Contains(">c"));
+            Log = types[0].Architecture.InstructionLog;
+            TypeReferences = types;
+            Types = types.ConvertAll(t => t.Host as Type);
         }
 
 
-        private List<MemberInfo> GetConstructorReferences(ConstructorInfo member)
+        private List<ReferenceInfo> GetConstructorReferences(ConstructorInfo member)
         {
             if (member is null) return new();
-            List<MemberInfo> refMembers = new();
+            List<ReferenceInfo> refMembers = new();
 
             // parameter types
             member.GetParameters()
@@ -41,11 +46,11 @@ namespace DependencyAnalyzer
 
             return refMembers;
         }
-        private List<MemberInfo> GetEventReferences(EventInfo member)
+        private List<ReferenceInfo> GetEventReferences(EventInfo member)
         {
             if (member is null) return new();
             // EventHandlerType
-            List<MemberInfo> refMembers = GetTypeReferences(member.EventHandlerType);
+            List<ReferenceInfo> refMembers = GetTypeReferences(member.EventHandlerType);
 
             // EventArgsType (Invoke method)
             // associated methods (OtherMethods)
@@ -57,12 +62,12 @@ namespace DependencyAnalyzer
 
             return refMembers;
         }
-        private List<MemberInfo> GetFieldReferences(FieldInfo? member)
+        private List<ReferenceInfo> GetFieldReferences(FieldInfo member)
         {
             if (member is null) return new();
             return GetTypeReferences(member.FieldType);
         }
-        internal List<MemberInfo> GetReferencedMembers(MemberInfo? member)
+        internal List<ReferenceInfo> GetReferencedMembers(MemberInfo member)
         {
             if (member is null) return new();
             return member.MemberType switch
@@ -71,36 +76,39 @@ namespace DependencyAnalyzer
                 MemberTypes.Event => GetEventReferences((EventInfo)member),
                 MemberTypes.Field => GetFieldReferences((FieldInfo)member),
                 MemberTypes.Method => GetMethodReferences((MethodInfo)member),
-                MemberTypes.Property => GetPropertyReferences((PropertyInfo)member),
                 _ => new()
             };
         }
-        private List<MemberInfo> GetMethodBodyReferences(MethodBase? methodbase)
+        private List<ReferenceInfo> GetMethodBodyReferences(MethodBase methodbase)
         {
             if (methodbase is null) return new();
-            List<MemberInfo> refMembers = new();
+            List<ReferenceInfo> refMembers = new();
 
-            MetadataObject mdo = new(methodbase);
+            MetadataObject mdo = new(methodbase, Log);
             List<Instruction> instructions = mdo.GetInstructions();
             foreach (Instruction instruction in instructions)
             {
-                foreach (Type type in types)
+                foreach (Type type in Types)
                 {
-                    List<MemberInfo> matchedMembers = 
+                    List<MemberInfo> matchedMembers =
                         type.GetMembers(Architecture.Filter)
                             .ToList()
                             .FindAll(m => instruction.Operand.Contains($"{type.Name}::{m.Name}"));
-                    refMembers.AddRange(matchedMembers);
+                    foreach (MemberInfo member in matchedMembers)
+                    {
+                        TypeReferenceInfo tri = TypeReferences.Find(t => t.Contains(member));
+                        refMembers.Add(tri.GetMemberBy(member));
+                    }
                 }
             }
 
             return refMembers;
         }
-        private List<MemberInfo> GetMethodReferences(MethodInfo? member)
+        private List<ReferenceInfo> GetMethodReferences(MethodInfo member)
         {
             if (member is null) return new();
             // return type
-            List<MemberInfo> refMembers = GetTypeReferences(member.ReturnType);
+            List<ReferenceInfo> refMembers = GetTypeReferences(member.ReturnType);
             // parameter types
             member.GetParameters()
                 .ToList()
@@ -115,35 +123,24 @@ namespace DependencyAnalyzer
 
             return refMembers;
         }
-        private List<MemberInfo> GetParameterReferences(ParameterInfo? param)
+        private List<ReferenceInfo> GetParameterReferences(ParameterInfo param)
         {
             if (param is null) return new();
             return GetTypeReferences(param.ParameterType);
         }
-        private List<MemberInfo> GetPropertyReferences(PropertyInfo? property)
-        {
-            if (property is null) return new();
-
-            List<MemberInfo> methods = new();
-            MethodInfo? accessor = property.GetMethod;
-            if (accessor is not null) methods.AddRange(GetMethodReferences(accessor));
-            accessor = property.SetMethod;
-            if (accessor is not null) methods.AddRange(GetMethodReferences(accessor));
-            return methods;
-        }
-        private List<MemberInfo> GetTypeReferences(Type? t)
+        private List<ReferenceInfo> GetTypeReferences(Type t)
         {
             if (t is null) return new();
             List<MemberInfo> refMembers = new();
 
-            if (types.Contains(t)) refMembers.Add(t);
+            if (Types.Contains(t)) refMembers.Add(t);
             refMembers.AddRange(
                 t.GenericTypeArguments
                     .ToList()
-                    .FindAll(garg => types.Contains(garg))
+                    .FindAll(garg => Types.Contains(garg))
             );
 
-            return refMembers;
+            return refMembers.ConvertAll(t => TypeReferences.Find(tri => tri.Hosts(t)) as ReferenceInfo);
         }
     }
 }

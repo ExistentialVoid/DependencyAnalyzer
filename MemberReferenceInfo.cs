@@ -1,7 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 
 namespace DependencyAnalyzer
 {
@@ -10,175 +10,118 @@ namespace DependencyAnalyzer
     /// </summary>
     internal sealed class MemberReferenceInfo : ReferenceInfo
     {
-        internal Dictionary<MemberInfo, int> ReferencedMembers { get; private set; } = new();
-        internal Dictionary<MemberInfo, int> ReferencingMembers { get; private set; } = new();
-        internal List<MemberInfo> PendingReferenceRemovals { get; private set; } = new();
-
-
-        public MemberReferenceInfo(MemberInfo member) : base(member) { }
-
-
-        internal void AddReferencedMember(MemberInfo member, int count = 1)
-        {
-            MemberInfo existingRef = ReferencedMembers
-                                        .ToList()
-                                        .Find(m => m.Key.HasSameMetadataDefinitionAs(member))
-                                        .Key;
-
-            if (existingRef != null) ReferencedMembers[existingRef] += count;
-            else ReferencedMembers.Add(member, count);
-            //else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
-            //    (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) ReferencedMembers.Add(member, count);
-        }
-        internal void AddReferencedMember(KeyValuePair<MemberInfo, int> refMember) => AddReferencedMember(refMember.Key, refMember.Value);
-        internal void AddReferencingMember(MemberInfo member, int count = 1)
-        {
-            MemberInfo existingRef = ReferencingMembers
-                                        .ToList()
-                                        .Find(m => m.Key.HasSameMetadataDefinitionAs(member)).Key;
-
-            if (existingRef != null) ReferencingMembers[existingRef] += count;
-            else if (!(member is TypeInfo type && (Host.DeclaringType?.HasSameMetadataDefinitionAs(type) ?? false)) &&
-                (!member.DeclaringType?.HasSameMetadataDefinitionAs(Host.DeclaringType) ?? true)) ReferencingMembers.Add(member, count);
-        }
-        internal void AddReferencingMember(KeyValuePair<MemberInfo, int> refMember) => AddReferencingMember(refMember.Key, refMember.Value);
-        internal override void FindReferencedMembers(List<ClassReferenceInfo> referenceTypes)
-        {
-            ReferencedMembers = new();
-            MemberInterpreter interpreter = new(referenceTypes.ConvertAll(c => c.Host as Type));
-            List<MemberInfo> refMembers = interpreter.GetReferencedMembers(Host);
-            
-            foreach (MemberInfo member in refMembers) AddReferencedMember(member);
-        }
-        internal override void FindReferencingMembers(List<ClassReferenceInfo> referenceTypes)
-        {
-            ReferencingMembers = new();
-            foreach (ClassReferenceInfo cri in referenceTypes)
-            {
-                cri.FlattenedMembers
-                    .FindAll(m => m.ReferencedMembers.Keys.ToList().Exists(rm => rm.HasSameMetadataDefinitionAs(Host)))
-                    .ForEach(m => AddReferencingMember(m.Host));
-            }
-        }
         /// <summary>
-        /// Check if member is a compiler generated method.
+        /// Copy constructor
         /// </summary>
-        /// <param name="methodName"></param>
-        /// <returns>True if name contains ">b__", otherwise false.</returns>
-        internal bool IsAnonomous(out string methodName)
-        {
-            if (Host.Name.Contains(">b__"))
-            {
-                methodName = Host.Name.Split('>')[0].TrimStart('<');
-                return true;
-            }
+        /// <param name="info">Member to be copied</param>
+        internal MemberReferenceInfo(MemberReferenceInfo info) : base(info) { }
+        public MemberReferenceInfo(MemberInfo member, TypeReferenceInfo parent) : base(member, parent) { }
 
-            methodName = string.Empty;
-            return false;
+
+        internal override void FindReferencedMembers()
+        {
+            ReferencedMembers.Clear();
+
+            List<TypeReferenceInfo> referenceTypes = Parent.Architecture.FlattenedReferenceTypes;
+            MemberInterpreter interpreter = new(referenceTypes);
+
+            List<ReferenceInfo> refMembers = interpreter.GetReferencedMembers(Host);
+            refMembers.ForEach(rm => ReferencedMembers.Add(rm));
         }
-        /// <summary>
-        /// Check if member is a compiler generated underlying field of an auto-property.
-        /// </summary>
-        /// <param name="propertyName"></param>
-        /// <returns>True if name contains ">k__BackingField", otherwise false.</returns>
-        internal bool IsBackingField(out string propertyName)
+        internal override void FindReferencingMembers()
         {
-            if (Host.Name.Contains(">k__BackingField"))
+            ReferencingMembers.Clear();
+            foreach (MemberReferenceInfo mri in Parent.Architecture.FlattenedReferenceMembers)
             {
-                propertyName = Host.Name.Split('>')[0].TrimStart('<');
-                return true;
-            }
-
-            propertyName = string.Empty;
-            return false;
-        }
-        /// <summary>
-        /// Check if member is the get method of a property.
-        /// </summary>
-        /// <param name="propertyName"></param>
-        /// <returns>True if name contains "get_", otherwise false.</returns>
-        internal bool IsGetter(out string propertyName)
-        {
-            propertyName = string.Empty;
-            if (!(Host is MethodInfo)) return false;
-
-            if (Host.Name.Contains("get_"))
-            {
-                propertyName = Host.Name.Replace("get_", string.Empty);
-                return true;
-            }
-
-            propertyName = string.Empty;
-            return false;
-        }
-        /// <summary>
-        /// Check if member is the set method of a property.
-        /// </summary>
-        /// <param name="propertyName"></param>
-        /// <returns>True if name contains "set_", otherwise false.</returns>
-        internal bool IsSetter(out string propertyName)
-        {
-            propertyName = string.Empty;
-            if (!(Host is MethodInfo)) return false;
-
-            if (Host.Name.Contains("set_"))
-            {
-                propertyName = Host.Name.Replace("set_", string.Empty);
-                return true;
-            }
-
-            propertyName = string.Empty;
-            return false;
-        }
-        /// <summary>
-        /// Relay all getter and setter referenced members and remove getter and setter references.
-        /// </summary>
-        /// <param name="referenceClasses">All relevant class information</param>
-        /// <param name="referenceMembers">All relevant method information</param>
-        internal void ReplaceAccessorReferences(List<ClassReferenceInfo> referenceClasses, List<MemberReferenceInfo> referenceMembers)
-        {
-            Dictionary<MemberInfo, int> copyReferencedMembers = new(ReferencedMembers);
-            foreach (var rm in copyReferencedMembers)
-            {
-                if (rm.Key is TypeInfo) continue;
-
-                MemberReferenceInfo targetReference = referenceMembers.Find(m => m.Host.HasSameMetadataDefinitionAs(rm.Key));
-                if (targetReference.IsGetter(out string propertyName) || targetReference.IsSetter(out propertyName))
+                foreach (var r in mri.ReferencedMembers)
                 {
-                    ClassReferenceInfo targetReferenceClass = referenceClasses.Find(c => c.Host.HasSameMetadataDefinitionAs(rm.Key.DeclaringType));
-                    MemberReferenceInfo property = targetReferenceClass.Members.Find(m => m.Host.Name.Equals(propertyName));
-                    if (!PendingReferenceRemovals.Contains(rm.Key)) PendingReferenceRemovals.Add(rm.Key);
-                    AddReferencedMember(property.Host, rm.Value);
-                    foreach (var referencedMember in targetReference.ReferencedMembers)
-                        property.AddReferencedMember(referencedMember);
+                    if (r.Key.Equals(this)) ReferencingMembers.Add(mri, r.Value);
                 }
             }
         }
         /// <summary>
-        /// Relay all members in ReferencedMembers who reference a compiled generated type's method or a complied generated method and remove the generated's reference
+        /// Check if member is the get or set method of a property.
         /// </summary>
-        /// <param name="referenceMembers">All relevant method information</param>
-        internal void ReplaceClosureReferences(List<MemberReferenceInfo> referenceMembers)
+        /// <param name="property"></param>
+        /// <returns>True if name contains "et_" and is not compiler generated, otherwise false.</returns>
+        internal bool IsAccessor(out MemberReferenceInfo property)
         {
-            Dictionary<MemberInfo, int> copyReferencedMembers = new(ReferencedMembers);
-            foreach (var rm in copyReferencedMembers)
-            {
-                if (rm.Key is TypeInfo) continue;
+            property = null;
+            if (!(Host is MethodInfo)) return false;
 
-                MemberReferenceInfo? targetReference = referenceMembers.Find(m => m.Host.HasSameMetadataDefinitionAs(rm.Key));
-                if (targetReference.IsCompilerGenerated)
-                {
-                    if (!PendingReferenceRemovals.Contains(rm.Key)) PendingReferenceRemovals.Add(rm.Key);
-                    targetReference.ReplaceClosureReferences(referenceMembers); // flatten closures' references
-                    targetReference.ReferencedMembers.ToList().ForEach(m => AddReferencedMember(m));
-                }
+            string name = Host.Name;
+            if (name.Length > 4 && name[1..4].Equals("et_"))
+            {
+                string propertyName = name[4..];
+                property = Parent.GetMemberBy(propertyName);
+                return true;
             }
+
+            return false;
         }
-        public override string ToString()
+        public override string ToFormattedString(string spacing)
         {
-            string info = $"[{Host.MemberType}] ";
-            info += Host.DeclaringType is null ? string.Empty : Host.DeclaringType.FullName + '.';
-            info += Host is Type type ? type.FullName : Host.Name;
+            ReferenceFilter filter = Parent.Architecture.ReportFilter;
+
+            if (filter.SimplifyCompilerReferences && IsCompilerGenerated) return string.Empty;
+
+            ReferenceCollection filteredReferencedMembers = new(ReferencedMembers);
+            ReferenceCollection filteredReferencingMembers = new(ReferencingMembers);
+
+            if (filter.SimplifyCompilerReferences)
+            {
+                filteredReferencedMembers = filter.RelayReferencedCompilerReferences(filteredReferencedMembers);
+                filteredReferencingMembers = filter.RelayReferencingCompilerReferences(filteredReferencingMembers);
+            }
+            if (filter.SimplifyAccessors)
+            {
+                if (IsAccessor(out _)) return string.Empty;
+                if (Host is PropertyInfo)
+                {
+                    filter.RelayAccessorsReferencedMembers(this, filteredReferencedMembers);
+                    filter.RelayAccessorsReferencingMembers(this, filteredReferencingMembers);
+                }
+                filter.ReplaceAccessors(filteredReferencedMembers);
+                filter.ReplaceAccessors(filteredReferencingMembers);
+            }
+            if (!filter.IncludeSiblingReferences)
+            {
+                filter.RemoveSiblingReferences(Parent, filteredReferencedMembers);
+                filter.RemoveSiblingReferences(Parent, filteredReferencingMembers);
+            }
+            if (!filter.IncludeTypeReferences)
+            {
+                filter.RemoveTypeReferences(filteredReferencedMembers);
+                filter.RemoveTypeReferences(filteredReferencingMembers);
+            }
+
+            if (filter.ExistingReferencesCondition == Condition.With &&
+                !filteredReferencedMembers.Any() && !filteredReferencingMembers.Any()) return string.Empty;
+            else if (filter.ExistingReferencesCondition == Condition.Without &&
+                (filteredReferencedMembers.Any() || filteredReferencingMembers.Any())) return string.Empty;
+
+
+            ReportFormat format = Parent.Architecture.ReportFormat;
+            StringBuilder builder = new();
+
+            builder.Append($"{spacing}{ToString(format)}");
+            spacing += '\t';
+            if (filteredReferencedMembers.Any())
+            {
+                builder.Append($"{spacing}References:");
+                filteredReferencedMembers.ToList().ForEach(r =>
+                    builder.Append($"{spacing}{$"({r.Value})",-5}{r.Key.ToString(format)}"));
+            }
+            if (filteredReferencingMembers.Any())
+            {
+                builder.Append($"{spacing}Referenced by:");
+                filteredReferencingMembers.ToList().ForEach(r =>
+                    builder.Append($"{spacing}{$"({r.Value})",-5}{r.Key.ToString(format)}"));
+            }
+
+            string info = builder.ToString();
+            if (filter.ExcludeNamespace ?? false) info = info.Replace($"{Parent.Namespace}.", string.Empty);
+
             return info;
         }
     }

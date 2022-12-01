@@ -8,75 +8,147 @@ namespace DependencyAnalyzer
     /// <summary>
     /// Apply reference binding flags to a set of MemberReferenceInfos
     /// </summary>
-    internal sealed class ReferenceFilter
+    public sealed class ReferenceFilter
     {
-        public ReferenceBindingFlags Filter { get; }
+        /// <summary>
+        /// Remove namespace from typeinfo.fullname (automatically set to true if unassigned and there is only one namespace).
+        /// </summary>
+        public bool? ExcludeNamespace { get; set; } = null;
+        /// <summary>
+        /// Specify conditon of members' reference count.
+        /// </summary>
+        public Condition ExistingReferencesCondition { get; set; } = Condition.With | Condition.Without;
+        /// <summary>
+        /// Inclusion of members with references to members of the same declaring type.
+        /// </summary>
+        public bool IncludeSiblingReferences { get; set; } = true;
+        public bool IncludeTypeReferences { get; set; } = true;
+        /// <summary>
+        /// When set to false remove getters and setters while also relaying their references to the mother property.
+        /// </summary>
+        public bool SimplifyAccessors { get; set; } = true;
+        /// <summary>
+        /// When set to true, compiler references will be cut from the reference chain
+        /// </summary>
+        public bool SimplifyCompilerReferences { get; set; } = true;
 
 
-        public ReferenceFilter(ReferenceBindingFlags filter)
+        /// <summary>
+        /// Transfer all referenced members of a property's accessors to itself
+        /// </summary>
+        /// <param name="property"></param>
+        /// <param name="collection">The existing collection to be modify</param>
+        internal void RelayAccessorsReferencedMembers(MemberReferenceInfo property, ReferenceCollection collection)
         {
-            Filter = filter;
+            if (property.Host is not PropertyInfo) return;
+
+            MemberReferenceInfo getter =
+                property.Parent.Architecture.FlattenedReferenceMembers.Find(m => m.Host.Name.Equals($"get_{property.Host.Name}"));
+            MemberReferenceInfo setter =
+                property.Parent.Architecture.FlattenedReferenceMembers.Find(m => m.Host.Name.Equals($"set_{property.Host.Name}"));
+
+            if (getter is not null) getter.ReferencedMembers.ToList().ForEach(r => collection.Add(r.Key, r.Value));
+            if (setter is not null) setter.ReferencedMembers.ToList().ForEach(r => collection.Add(r.Key, r.Value));
         }
-
-
-        public IReadOnlyList<MemberReferenceInfo> ApplyFilterTo(IList<MemberReferenceInfo> members)
+        /// <summary>
+        /// Transfer all referencing members of a property's accessors to itself
+        /// </summary>
+        /// <param name="property"></param>
+        /// <param name="collection">The existing collection to be modify</param>
+        internal void RelayAccessorsReferencingMembers(MemberReferenceInfo property, ReferenceCollection collection)
         {
-            if (members is null) return new List<MemberReferenceInfo>();
-            if (Filter == ReferenceBindingFlags.Default) return new List<MemberReferenceInfo>(members);
+            if (property.Host is not PropertyInfo) return;
 
-            List<MemberReferenceInfo> filtered = new();
+            MemberReferenceInfo getter =
+                property.Parent.Architecture.FlattenedReferenceMembers.Find(m => m.Host.Name.Equals($"get_{property.Host.Name}"));
+            MemberReferenceInfo setter =
+                property.Parent.Architecture.FlattenedReferenceMembers.Find(m => m.Host.Name.Equals($"set_{property.Host.Name}"));
 
-            foreach (var member in members)
+            if (getter is not null) getter.ReferencingMembers.ToList().ForEach(r => collection.Add(r.Key, r.Value));
+            if (setter is not null) setter.ReferencingMembers.ToList().ForEach(r => collection.Add(r.Key, r.Value));
+        }
+        /// <summary>
+        /// Cut compiler member references from the downstream reference chain
+        /// </summary>
+        /// <param name="collection">Referenced member whose ReferencedMembers' compiler references will be relayed</param>
+        /// <returns>A new collection of flattened, non-compiler members</returns>
+        internal ReferenceCollection RelayReferencedCompilerReferences(ReferenceCollection collection)
+        {
+            ReferenceCollection newCollection = new(member: null);
+            foreach (var reference in collection)
             {
-                if (Filter.HasFlag(ReferenceBindingFlags.NonCompiler) && member.IsCompilerGenerated) continue;
-
-                if (member.Host.DeclaringType != null)
+                if (reference.Key.IsCompilerGenerated)
                 {
-                    bool isSiblingReference(MemberInfo m) => m.DeclaringType != null && m.DeclaringType == member.Host.DeclaringType;
-                    if (Filter.HasFlag(ReferenceBindingFlags.NoSiblingReferences) &&
-                        (member.ReferencedMembers.Keys.ToList().Exists(isSiblingReference)
-                        || member.ReferencingMembers.Keys.ToList().Exists(isSiblingReference))) continue;
+                    Dictionary<ReferenceInfo, int> relays = RelayReferencedCompilerReferences(reference.Key.ReferencedMembers);
+                    foreach (var r in relays)
+                    {
+                        newCollection.Add(r.Key, r.Value);
+                    }
                 }
-
-                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences) && 
-                    member.ReferencedMembers.Count + member.ReferencingMembers.Count == 0) continue;
-
-                if (Filter.HasFlag(ReferenceBindingFlags.WithReferences))
-                {
-                    bool hasMember(MemberInfo m) => !members.ToList().Find(mri => mri.Host.HasSameMetadataDefinitionAs(m))?.IsCompilerGenerated ?? true;
-                    if (member.ReferencedMembers.Keys.ToList().FindAll(hasMember).Count
-                        + member.ReferencingMembers.Keys.ToList().FindAll(hasMember).Count == 0) continue;
-                }
-
-                filtered.Add(member);
+                else newCollection.Add(reference.Key, reference.Value);
             }
-
-            return filtered;
+            return newCollection;
+        }
+        /// <summary>
+        /// Cut compiler member references from the upstream reference chain
+        /// </summary>
+        /// <param name="collection">Referencing members whose ReferencingMembers' compiler references will be relayed</param>
+        /// <returns>A new collection of flattened, non-compiler members</returns>
+        internal ReferenceCollection RelayReferencingCompilerReferences(ReferenceCollection collection)
+        {
+            ReferenceCollection newCollection = new(member: null);
+            foreach (var reference in collection)
+            {
+                if (reference.Key.IsCompilerGenerated)
+                {
+                    Dictionary<ReferenceInfo, int> relays = RelayReferencingCompilerReferences(reference.Key.ReferencingMembers);
+                    relays.ToList().ForEach(r => newCollection.Add(r.Key, r.Value));
+                }
+                else newCollection.Add(reference.Key, reference.Value);
+            }
+            return newCollection;
+        }
+        /// <summary>
+        /// Remove all references to other members of the same class
+        /// </summary>
+        /// <param name="parent">The class that defines siblings</param>
+        /// <param name="collection">The collection of references</param>
+        internal void RemoveSiblingReferences(TypeReferenceInfo parent, ReferenceCollection collection)
+            => collection.RemoveAll(r => r.Key.Parent?.Equals(parent) ?? r.Key.Equals(parent));
+        /// <summary>
+        /// Remove all references that are a type (TypeReferenceInfo)
+        /// </summary>
+        /// <param name="collection">The collection of references</param>
+        /// <returns>A new key-value collection of filtered members</returns>
+        internal void RemoveTypeReferences(ReferenceCollection collection)
+            => collection.RemoveAll(r => r.Key is TypeReferenceInfo);
+        /// <summary>
+        /// Replace all instances of accessor methods with their respective property
+        /// </summary>
+        /// <param name="collection">The collection of references</param>
+        internal void ReplaceAccessors(ReferenceCollection collection)
+        {
+            foreach (var reference in collection)
+            {
+                if (reference.Key is MemberReferenceInfo mri && mri.IsAccessor(out MemberReferenceInfo property))
+                    collection.Replace(reference.Key, property, reference.Value);
+            }
         }
     }
 
-
     /// <summary>
-    /// Specifies filters for reference info members when reporting
+    /// Specify the inclusion of featured members
     /// </summary>
     [Flags]
-    public enum ReferenceBindingFlags
+    public enum Condition
     {
         /// <summary>
-        /// Specifies that no binding flags are defined.
+        /// Specifies that members with specified condition are included.
         /// </summary>
-        Default = 0,
+        With = 1,
         /// <summary>
-        /// Specifies that members must have some reference components to appear in report.
+        /// Specifies that members without specified condition are included.
         /// </summary>
-        WithReferences = 1,
-        /// <summary>
-        /// Specifies that references to other members in own defining class will not appear in report.
-        /// </summary>
-        NoSiblingReferences = 2,
-        /// <summary>
-        /// Specifies that compiler-generated members will not appear in report
-        /// </summary>
-        NonCompiler = 4,
+        Without = 2
     }
 }

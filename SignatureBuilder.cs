@@ -6,7 +6,7 @@ namespace DependencyAnalyzer
 {
     internal static class SignatureBuilder
     {
-        private static string GetGenericInfo(TypeInfo? info)
+        private static string GetGenericInfo(TypeInfo info)
         {
             if (info is null) return string.Empty;
             if (!info.IsGenericType) return string.Empty;
@@ -40,7 +40,7 @@ namespace DependencyAnalyzer
             }
             return paramInfo.TrimEnd().TrimEnd(',') + ')';
         }
-        internal static string GetSignature(MemberInfo? member)
+        internal static string GetSignature(MemberInfo member)
         {
             if (member is null) return string.Empty;
 
@@ -68,7 +68,7 @@ namespace DependencyAnalyzer
             else if (info.IsVirtual) builder.Append("virtual ");
             else if (info.IsFinal) builder.Append("sealed ");
 
-            builder.Append($"void {info.Name}");
+            builder.Append($"void {info.DeclaringType.Name}");
             builder.Append(GetMethodParamsInfo(info));
             return builder.ToString();
         }
@@ -85,7 +85,7 @@ namespace DependencyAnalyzer
                 else if (addMethod.IsFamilyOrAssembly) builder.Append("private protected ");
             }
 
-            Type? handlerType = info.EventHandlerType;
+            Type handlerType = info.EventHandlerType;
             builder.Append($"event {handlerType?.Name ?? "?"}");
             builder.Append(GetGenericInfo(handlerType as TypeInfo));
             builder.Append($" {info.Name}");
@@ -127,7 +127,7 @@ namespace DependencyAnalyzer
             else if (info.IsVirtual) builder.Append("virtual ");
             else if (info.IsFinal) builder.Append("sealed ");
             else if (info.IsHideBySig) builder.Append("new ");
-            else if ((info.DeclaringType?.BaseType?.GetMethod(info.Name)?.GetMethodBody() 
+            else if ((info.DeclaringType?.BaseType?.GetMethod(info.Name)?.GetMethodBody()
                 ?? info.GetMethodBody()) != info.GetMethodBody()) builder.Append("override ");
 
             Type returnType = info.ReturnType;
@@ -140,15 +140,15 @@ namespace DependencyAnalyzer
         private static string SignatureOfProperty(PropertyInfo info)
         {
             StringBuilder builder = new();
-            MethodInfo? getter = info.GetMethod;
-            MethodInfo? setter = info.SetMethod;
+            MethodInfo getter = info.GetMethod;
+            MethodInfo setter = info.SetMethod;
 
             string getterAccessModifiers;
             if (getter is null) getterAccessModifiers = string.Empty;
             else if (getter.IsPublic) getterAccessModifiers = "public ";
             else if (getter.IsAssembly) getterAccessModifiers = "internal ";
             else if (getter.IsFamily) getterAccessModifiers = "protected ";
-            else if (getter.IsFamilyOrAssembly) getterAccessModifiers ="protected internal";
+            else if (getter.IsFamilyOrAssembly) getterAccessModifiers = "protected internal";
             else if (getter.IsFamilyAndAssembly) getterAccessModifiers = "private protected ";
             else getterAccessModifiers = "private ";
 

@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -11,12 +11,13 @@ namespace DependencyAnalyzer
     /// </summary>
     internal class MetadataObject
     {
-        private byte[] IL { get; }
+        private readonly byte[] IL;
         /// <summary>
         /// The full instruction set of MethodBody interpreted from ILByteArray
         /// </summary>
-        private List<Instruction> InstructionStream { get; } = new List<Instruction>();
-        private MethodBase Method { get; } //Neccessary to get module and handle ConstructorInfo method body
+        private readonly List<Instruction> InstructionStream = new List<Instruction>();
+        private readonly TextWriter Log = null;
+        private readonly MethodBase Method; //Neccessary to get module and handle ConstructorInfo method body
         // private List<Instruction> StrayInstructions { get; } = new List<Instruction>();
 
         #region grab il bytes
@@ -46,6 +47,15 @@ namespace DependencyAnalyzer
             }
             else IL = Array.Empty<byte>();
         }
+        /// <summary>
+        /// Interpret method body for either a MethodInfo
+        /// </summary>
+        /// <param name="method"></param>
+        /// <param name="log">Record the instruction set</param>
+        public MetadataObject(MethodBase method, TextWriter log) : this(method)
+        {
+            Log = log;
+        }
 
 
         /// <summary>
@@ -70,7 +80,7 @@ namespace DependencyAnalyzer
                 string operand = GetOperand(code.OperandType, ref index); // advance index into next instruction
                 Instruction instruction = new(code, operand, pos);
                 InstructionStream.Add(instruction);
-                Architecture.InstructionLog.AppendLine(
+                Log?.WriteLine(
                     $"{Method.ReflectedType?.FullName}.{Method.Name}()".PadRight(80)
                     + instruction.ToString());
             }
@@ -345,7 +355,7 @@ namespace DependencyAnalyzer
                 case OperandType.InlineBrTarget:
                     return (I4(ref pos) + pos).ToString();
                 case OperandType.InlineField:
-                    FieldInfo? field = module.ResolveField(
+                    FieldInfo field = module.ResolveField(
                         MetadataToken(ref pos),
                         Method.ReflectedType?.GetGenericArguments(),
                         Method is ConstructorInfo ? Array.Empty<Type>() : Method.GetGenericArguments()
@@ -368,7 +378,7 @@ namespace DependencyAnalyzer
                 case OperandType.InlineI8:
                     return I8(ref pos).ToString();
                 case OperandType.InlineMethod:
-                    MethodBase? methodbase = module.ResolveMethod(
+                    MethodBase methodbase = module.ResolveMethod(
                         MetadataToken(ref pos),
                         Method.ReflectedType?.GetGenericArguments(),
                         Method is ConstructorInfo ? Array.Empty<Type>() : Method.GetGenericArguments()
@@ -376,17 +386,17 @@ namespace DependencyAnalyzer
 
                     if (methodbase is null) return string.Empty;
 
-                    return (methodbase.IsStatic ? "static [" : " [") + 
-                        (methodbase is ConstructorInfo ? "Void" : ((MethodInfo)methodbase).ReturnType.Name)
+                    return "[" + (methodbase is ConstructorInfo ? "Void" : ((MethodInfo)methodbase).ReturnType.Name)
                         + $"] {methodbase.ReflectedType?.Name}::{methodbase.Name}()";
                 case OperandType.InlineR:
                     return R8(ref pos).ToString();
                 case OperandType.InlineSig:
                     return module.ResolveSignature(MetadataToken(ref pos)).ToString() ?? string.Empty;
                 case OperandType.InlineString:
-                    return $"\" {module.ResolveString(MetadataToken(ref pos))} \"";
+                    string str = module.ResolveString(MetadataToken(ref pos));
+                    return $"\"{(str.Equals("\n") ? "\\n" : (str.Equals("\t") ? "\\t" : str))}\"";
                 case OperandType.InlineSwitch:
-                    string str = string.Empty;
+                    str = string.Empty;
                     uint cases = U4(ref pos);
                     for (uint i = 0; i < cases; i++)
                     {
