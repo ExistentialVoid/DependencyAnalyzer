@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 
 namespace DependencyAnalyzer
 {
@@ -16,7 +17,7 @@ namespace DependencyAnalyzer
         /// <summary>
         /// Modifiable object for alterning report results
         /// </summary>
-        public ReferenceFilter ReportFilter { get; } = new();
+        internal Filter ReportFilter { get; } = new();
         public ReportFormat ReportFormat { get; set; } = ReportFormat.Default;
 
         private readonly List<TypeReferenceInfo> ReferenceTypes;
@@ -56,6 +57,18 @@ namespace DependencyAnalyzer
             FlattenedReferenceTypes.ForEach(t => t.FindReferencedMembers());
             FlattenedReferenceTypes.ForEach(t => t.FindReferencingMembers());
         }
+        public string GetFormattedResults()
+        {
+            if (ReportFilter.ExcludeNamespace is null)
+            {
+                int namespaceCount = ReferenceTypes.ConvertAll(c => c.Namespace).Distinct().Count();
+                ReportFilter.ExcludeNamespace = namespaceCount == 1;
+            }
+
+            StringBuilder builder = new();
+            ReferenceTypes.ForEach(t => builder.AppendLine(t.ToFormattedString("\n")));
+            return builder.ToString();
+        }
         public void RecordFormattedResults(TextWriter writer)
         {
             if (ReportFilter.ExcludeNamespace is null)
@@ -68,5 +81,4 @@ namespace DependencyAnalyzer
         }
 
     }
-    public enum ReportFormat { Default, Basic, Detailed, Signature, Short }
 }

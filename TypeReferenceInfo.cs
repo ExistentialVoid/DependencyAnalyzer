@@ -96,7 +96,7 @@ namespace DependencyAnalyzer
         internal MemberReferenceInfo GetMemberBy(string name) => Members.Find(m => m.Host.Name.Equals(name));
         public override string ToFormattedString(string spacing)
         {
-            ReferenceFilter filter = Architecture.ReportFilter;
+            Filter filter = Architecture.ReportFilter;
 
             if (filter.SimplifyCompilerReferences && IsCompilerGenerated) return string.Empty;
 
@@ -125,12 +125,15 @@ namespace DependencyAnalyzer
                 }
             }
 
-            if (filter.ExistingReferencesCondition == Condition.With &&
+            if (filter.ExistingReferenceCondition == Condition.With &&
                 memberCount == 0) return string.Empty;
-            else if (filter.ExistingReferencesCondition == Condition.Without &&
+            else if (filter.ExistingReferenceCondition == Condition.Without &&
                 memberCount != 0) return string.Empty;
 
-            return builder.ToString();
+            string info = builder.ToString();
+            if (filter.ExcludeNamespace ?? false) info = info.Replace($"{Namespace}.", string.Empty);
+
+            return info;
         }
     }
 }

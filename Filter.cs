@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
@@ -8,28 +7,13 @@ namespace DependencyAnalyzer
     /// <summary>
     /// Apply reference binding flags to a set of MemberReferenceInfos
     /// </summary>
-    public sealed class ReferenceFilter
+    internal sealed class Filter : IReferenceFilter
     {
-        /// <summary>
-        /// Remove namespace from typeinfo.fullname (automatically set to true if unassigned and there is only one namespace).
-        /// </summary>
         public bool? ExcludeNamespace { get; set; } = null;
-        /// <summary>
-        /// Specify conditon of members' reference count.
-        /// </summary>
-        public Condition ExistingReferencesCondition { get; set; } = Condition.With | Condition.Without;
-        /// <summary>
-        /// Inclusion of members with references to members of the same declaring type.
-        /// </summary>
+        public Condition ExistingReferenceCondition { get; set; } = Condition.With | Condition.Without;
         public bool IncludeSiblingReferences { get; set; } = true;
         public bool IncludeTypeReferences { get; set; } = true;
-        /// <summary>
-        /// When set to false remove getters and setters while also relaying their references to the mother property.
-        /// </summary>
         public bool SimplifyAccessors { get; set; } = true;
-        /// <summary>
-        /// When set to true, compiler references will be cut from the reference chain
-        /// </summary>
         public bool SimplifyCompilerReferences { get; set; } = true;
 
 
@@ -135,21 +119,5 @@ namespace DependencyAnalyzer
                     collection.Replace(reference.Key, property, reference.Value);
             }
         }
-    }
-
-    /// <summary>
-    /// Specify the inclusion of featured members
-    /// </summary>
-    [Flags]
-    public enum Condition
-    {
-        /// <summary>
-        /// Specifies that members with specified condition are included.
-        /// </summary>
-        With = 1,
-        /// <summary>
-        /// Specifies that members without specified condition are included.
-        /// </summary>
-        Without = 2
     }
 }

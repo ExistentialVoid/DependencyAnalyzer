@@ -61,9 +61,12 @@ namespace DependencyAnalyzer
         }
         public override string ToFormattedString(string spacing)
         {
-            ReferenceFilter filter = Parent.Architecture.ReportFilter;
+            Filter filter = Parent.Architecture.ReportFilter;
+            ReportFormat format = Parent.Architecture.ReportFormat;
 
             if (filter.SimplifyCompilerReferences && IsCompilerGenerated) return string.Empty;
+            else if (filter.SimplifyAccessors && IsAccessor(out _)) return string.Empty;
+            else if (filter.ExistingReferenceCondition == Condition.NoReferences) return $"{spacing}{ToString(format)}";
 
             ReferenceCollection filteredReferencedMembers = new(ReferencedMembers);
             ReferenceCollection filteredReferencingMembers = new(ReferencingMembers);
@@ -75,7 +78,6 @@ namespace DependencyAnalyzer
             }
             if (filter.SimplifyAccessors)
             {
-                if (IsAccessor(out _)) return string.Empty;
                 if (Host is PropertyInfo)
                 {
                     filter.RelayAccessorsReferencedMembers(this, filteredReferencedMembers);
@@ -95,13 +97,12 @@ namespace DependencyAnalyzer
                 filter.RemoveTypeReferences(filteredReferencingMembers);
             }
 
-            if (filter.ExistingReferencesCondition == Condition.With &&
+            if (filter.ExistingReferenceCondition == Condition.With &&
                 !filteredReferencedMembers.Any() && !filteredReferencingMembers.Any()) return string.Empty;
-            else if (filter.ExistingReferencesCondition == Condition.Without &&
+            else if (filter.ExistingReferenceCondition == Condition.Without &&
                 (filteredReferencedMembers.Any() || filteredReferencingMembers.Any())) return string.Empty;
 
 
-            ReportFormat format = Parent.Architecture.ReportFormat;
             StringBuilder builder = new();
 
             builder.Append($"{spacing}{ToString(format)}");
