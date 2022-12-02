@@ -1,4 +1,6 @@
-﻿namespace DependencyAnalyzer
+﻿using System;
+
+namespace DependencyAnalyzer
 {
     /// <summary>
     /// Provides a set of simple logical properties that can be applied to references
@@ -29,5 +31,25 @@
         /// Compiler-generated member references will be cut from the reference chain.
         /// </summary>
         bool SimplifyCompilerReferences { get; set; }
+    }
+
+    /// <summary>
+    /// Specify the inclusion of featured members
+    /// </summary>
+    [Flags]
+    public enum Condition
+    {
+        /// <summary>
+        /// Display no references.
+        /// </summary>
+        NoReferences = 0,
+        /// <summary>
+        /// Specifies that members with specified condition are included.
+        /// </summary>
+        With = 1,
+        /// <summary>
+        /// Specifies that members without specified condition are included.
+        /// </summary>
+        Without = 2
     }
 }

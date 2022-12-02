@@ -16,7 +16,7 @@ namespace DependencyAnalyzer
         /// The full instruction set of MethodBody interpreted from ILByteArray
         /// </summary>
         private readonly List<Instruction> InstructionStream = new List<Instruction>();
-        private readonly TextWriter Log = null;
+        private readonly TextWriter? Log;
         private readonly MethodBase Method; //Neccessary to get module and handle ConstructorInfo method body
         // private List<Instruction> StrayInstructions { get; } = new List<Instruction>();
 
@@ -52,7 +52,7 @@ namespace DependencyAnalyzer
         /// </summary>
         /// <param name="method"></param>
         /// <param name="log">Record the instruction set</param>
-        public MetadataObject(MethodBase method, TextWriter log) : this(method)
+        public MetadataObject(MethodBase method, TextWriter? log) : this(method)
         {
             Log = log;
         }

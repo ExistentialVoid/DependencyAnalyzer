@@ -1,76 +1,48 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using System.Reflection;
 
 namespace DependencyAnalyzer
 {
-    internal sealed class ReferenceCollection : Dictionary<ReferenceInfo, int>
+    internal sealed class ReferenceCollection : List<Reference>
     {
         /// <summary>
-        /// Holder of the reference collection
+        /// Increase the occurance of a reference, or add if a matching one doesn't exist.
         /// </summary>
-        internal ReferenceInfo Member { get; }
-
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="member">The holder of references</param>
-        public ReferenceCollection(ReferenceInfo member)
+        /// <param name="referencedMember">The member being referenced</param>
+        /// <param name="referencingMember">The member doing the referencing</param>
+        /// <param name="count">Number of occurances (Default is 1)</param>
+        public void Include(MemberInfo referencedMember, MemberInfo referencingMember, uint count = 1)
         {
-            Member = member;
-        }
-        /// <summary>
-        /// Initialize with an existing collection of elements
-        /// </summary>
-        /// <param name="collection">An existing collection</param>
-        /// <param name="member">The holder of references</param>
-        internal ReferenceCollection(Dictionary<ReferenceInfo, int> collection, ReferenceInfo member) : this(member)
-        {
-            foreach (var item in collection) base.Add(item.Key, item.Value);
-        }
-        /// <summary>
-        /// Copy constructor
-        /// </summary>
-        /// <param name="collection">The collection that will be copied</param>
-        internal ReferenceCollection(ReferenceCollection collection)
-        {
-            Member = collection.Member;
-            foreach (var item in collection) base.Add(item.Key, item.Value);
-        }
-
-
-        public void Add(KeyValuePair<ReferenceInfo, int> reference) => Add(reference.Key, reference.Value);
-        public new void Add(ReferenceInfo member, int count = 1)
-        {
-            if (base.ContainsKey(member)) base[member] += count;
-            else base.Add(member, count);
-        }
-        public void Remove(KeyValuePair<ReferenceInfo, int> reference) => Remove(reference.Key, reference.Value);
-        public void Remove(ReferenceInfo member, int count)
-        {
-            if (base.ContainsKey(member))
+            bool referenceMatch(Reference r) =>
+                r.ReferencedMember.HasSameMetadataDefinitionAs(referencedMember) &&
+                r.ReferencingMember.HasSameMetadataDefinitionAs(referencingMember);
+            if (base.Exists(referenceMatch))
             {
-                base[member] -= count;
-                if (base[member] <= 0) base.Remove(member);
+                Reference R = base.Find(referenceMatch);
+                R.Count += count;
+            }
+            else
+            {
+                base.Add(new Reference(referencingMember, referencedMember, count));
             }
         }
-        public int RemoveAll(Predicate<KeyValuePair<ReferenceInfo, int>> predicate)
+        /// <summary>
+        /// Decrease the occurance of a reference, or remove if no remaining occurances.
+        /// </summary>
+        /// <param name="referencedMember">The member being referenced</param>
+        /// <param name="referencingMember">The member doing the referencing</param>
+        /// <param name="count">Number of occurances (Default is 0, force removal)</param>
+        public void Exclude(MemberInfo referencedMember, MemberInfo referencingMember, uint count = 0)
         {
-            int count = 0;
-            foreach (var item in this)
+            bool referenceMatch(Reference r) =>
+                r.ReferencedMember.HasSameMetadataDefinitionAs(referencedMember) &&
+                r.ReferencingMember.HasSameMetadataDefinitionAs(referencingMember);
+            if (base.Exists(referenceMatch))
             {
-                if (predicate(item))
-                {
-                    base.Remove(item.Key);
-                    count++;
-                }
+                Reference R = base.Find(referenceMatch);
+                R.Count -= count;
+                if (count == 0 || R.Count == 0) base.Remove(R);
             }
-            return count;
-        }
-        public void Replace(ReferenceInfo oldMember, ReferenceInfo newMember, int count)
-        {
-            Add(newMember, count);
-            base.Remove(oldMember);
         }
     }
 }
