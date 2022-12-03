@@ -10,7 +10,7 @@ namespace DependencyAnalyzer
         /// <summary>
         /// The number of occurances
         /// </summary>
-        uint Count { get; }
+        uint Count { get; set; }
         /// <summary>
         /// The member being referenced
         /// </summary>

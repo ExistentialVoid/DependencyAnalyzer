@@ -20,7 +20,6 @@ namespace DependencyAnalyzer
         public Architecture(Type[] types)
         {
             Types = new(types);
-            Types.RemoveAll(t => t.IsNested || (t.FullName ?? t.Name).Contains("<"));
 
             List<MemberInfo> members = new();
             foreach (Type t in types) members.AddRange(t.GetMembers(Filter));
