@@ -56,106 +56,101 @@ namespace DependencyAnalyzer
         public IList<IReference> Results() => new List<IReference>(References);
         public IList<IReference> Results(IReferenceFilter filter)
         {
-            ReferenceCollection references = new();
-            foreach (Reference r in References)
-            {
-                if (!filter.IncludeSiblingReferences)
-                {
-                    Type? parent1 = r.ReferencedMember is TypeInfo T1 ? T1 : r.ReferencedMember.DeclaringType;
-                    Type? parent2 = r.ReferencingMember is TypeInfo T2 ? T2 : r.ReferencingMember.DeclaringType;
-                    if (parent1 is Type && parent2 is Type && parent1.HasSameMetadataDefinitionAs(parent2))
-                        continue;
-                }
-                
-                if (!filter.IncludeTypeReferences && (r.ReferencedMember is TypeInfo || r.ReferencingMember is TypeInfo))
-                {
-                    continue;
-                }
+            ReferenceCollection references = new(References);
 
-                if (filter.SimplifyAccessors)
+            if (!filter.IncludeSiblingReferences)
+            {
+                foreach (Reference r in new List<Reference>(references))
                 {
-                    if (r.ReferencedMember.Name[1..4].Equals("et_"))
+                    // compare parents
+                    Type? p1 = r.ReferencedMember is TypeInfo T1 ? T1 : r.ReferencedMember.DeclaringType;
+                    Type? p2 = r.ReferencingMember is TypeInfo T2 ? T2 : r.ReferencingMember.DeclaringType;
+                    if (p1 is Type && p2 is Type && p1.HasSameMetadataDefinitionAs(p2)) 
+                        references.Exclude(r);
+                }
+            }
+
+            if (!filter.IncludeTypeReferences)
+            {
+                foreach (Reference r in new List<Reference>(references))
+                    if (r.ReferencedMember is TypeInfo || r.ReferencingMember is TypeInfo) 
+                        references.Exclude(r);
+            }
+
+            if (filter.SimplifyCompilerReferences)
+            {
+                foreach (Reference r in new List<Reference>(references))
+                {
+                    string referencedFullname = r.GetReferencedMemberFullName();
+                    string referencingFullname = r.GetReferencingMemberFullName();
+                    if (referencedFullname.Contains('<') && !referencingFullname.Contains('<'))
+                    {
+                        references.Exclude(r);
+
+                        bool matchedReferenced(Reference reference) =>
+                            reference.ReferencingMember.HasSameMetadataDefinitionAs(r.ReferencedMember);
+                        List<Reference> matchedRefernces = References.FindAll(matchedReferenced);
+                        ReferenceCollection relays = RelayReferencedCompilerReferences(matchedRefernces);
+
+                        foreach (var relay in relays) references.Include(relay);
+                    }
+                }
+                // Remove compiler references
+                foreach (Reference r in new List<Reference>(references))
+                {
+                    string referencedFullname = r.GetReferencedMemberFullName();
+                    string referencingFullname = r.GetReferencingMemberFullName();
+                    if (referencedFullname.Contains('<') || referencingFullname.Contains('<'))
+                        references.Exclude(r.ReferencedMember, r.ReferencingMember, 0);
+                }
+            }
+
+            if (filter.SimplifyAccessors)
+            {
+                foreach (Reference r in new List<Reference>(references))
+                {
+                    if (r.ReferencedMember.Name.Length > 4 && r.ReferencedMember.Name[1..4].Equals("et_"))
                     {
                         PropertyInfo? property = (PropertyInfo)FlattenedMembers.Find(m =>
-                            m.Name.Equals(r.ReferencedMember.Name[4..]) && 
+                            m.Name.Equals(r.ReferencedMember.Name[4..]) &&
                             (m.DeclaringType?.HasSameMetadataDefinitionAs(r.ReferencedMember.DeclaringType) ?? false));
-                        if (property is null) continue;
-                        r.ReferencedMember = property;
+                        if (property is not null)
+                        {
+                            references.Include(property, r.ReferencingMember, r.Count);
+                            references.Exclude(r);
+                        }
                     }
-                    if (r.ReferencingMember.Name[1..4].Equals("et_"))
+                    if (r.ReferencingMember.Name.Length > 4 && r.ReferencingMember.Name[1..4].Equals("et_"))
                     {
                         PropertyInfo? property = (PropertyInfo)FlattenedMembers.Find(m =>
                             m.Name.Equals(r.ReferencingMember.Name[4..]) &&
                             (m.DeclaringType?.HasSameMetadataDefinitionAs(r.ReferencingMember.DeclaringType) ?? false));
-                        if (property is null) continue;
-                        r.ReferencingMember = property;
+                        if (property is not null)
+                        {
+                            references.Include(r.ReferencedMember, property, r.Count);
+                            references.Exclude(r);
+                        }
                     }
                 }
-
-                if (filter.SimplifyCompilerReferences)
-                {
-                    MemberInfo referenced = r.ReferencedMember;
-                    string referencedFullname = referenced is TypeInfo T1 ? (T1.FullName ?? T1.Name)
-                        : $"{referenced.DeclaringType?.FullName}.{referenced.Name}";
-                    MemberInfo referencing = r.ReferencingMember;
-                    string referencingFullname = referencing is TypeInfo T2 ? (T2.FullName ?? T2.Name)
-                        : $"{referencing.DeclaringType?.FullName}.{referencing.Name}";
-
-                    if (referencedFullname.Contains("<") && !referencingFullname.Contains("<"))
-                    {
-                        bool matchedReferenced(Reference reference) => reference.ReferencingMember.HasSameMetadataDefinitionAs(r.ReferencingMember);
-                        ReferenceCollection relays = RelayReferencedCompilerReferences(References.FindAll(matchedReferenced));
-                        foreach (var relay in relays)
-                            references.Include(relay.ReferencedMember, relay.ReferencingMember, relay.Count);
-                        continue;
-                    }
-                    else if (referencingFullname.Contains("<") && !referencedFullname.Contains("<"))
-                    {
-                        bool matchedReferenced(Reference reference) => reference.ReferencedMember.HasSameMetadataDefinitionAs(r.ReferencedMember);
-                        ReferenceCollection relays = RelayReferencedCompilerReferences(References.FindAll(matchedReferenced));
-                        foreach (var relay in relays)
-                            references.Include(relay.ReferencedMember, relay.ReferencingMember, relay.Count);
-                        continue;
-                    }
-                }
-
-                references.Include(r.ReferencedMember, r.ReferencingMember, r.Count);
             }
+
             return new List<IReference>(references);
         }
         private ReferenceCollection RelayReferencedCompilerReferences(List<Reference> collection)
         {
             ReferenceCollection newCollection = new();
-            foreach (var reference in collection)
+            foreach (var r in collection)
             {
-                MemberInfo referenced = reference.ReferencedMember;
-                string fullname = referenced is TypeInfo T ? (T.FullName ?? T.Name)
-                    : $"{referenced.DeclaringType?.FullName}.{referenced.Name}";
-                if (fullname.Contains("<"))
+                if (r.GetReferencedMemberFullName().Contains('<'))
                 {
-                    bool matchedReferenced(Reference r) => r.ReferencingMember.HasSameMetadataDefinitionAs(reference.ReferencingMember);
-                    ReferenceCollection relays = RelayReferencedCompilerReferences(References.FindAll(matchedReferenced));
-                    foreach (var r in relays)
-                        newCollection.Include(r.ReferencedMember, r.ReferencingMember, r.Count);
+                    bool matchedReferenced(Reference reference) =>
+                        reference.ReferencingMember.HasSameMetadataDefinitionAs(r.ReferencedMember);
+                    List<Reference> matchedRefernces = References.FindAll(matchedReferenced);
+                    ReferenceCollection relays = RelayReferencedCompilerReferences(matchedRefernces);
+
+                    foreach (var relay in relays) newCollection.Include(relay);
                 }
-            }
-            return newCollection;
-        }
-        private ReferenceCollection RelayReferencingCompilerReferences(List<Reference> collection)
-        {
-            ReferenceCollection newCollection = new();
-            foreach (var reference in collection)
-            {
-                MemberInfo referencing = reference.ReferencingMember;
-                string fullname = referencing is TypeInfo T ? (T.FullName ?? T.Name)
-                    : $"{referencing.DeclaringType?.FullName}.{referencing.Name}";
-                if (fullname.Contains("<"))
-                {
-                    bool matchedReferencing(Reference r) => r.ReferencedMember.HasSameMetadataDefinitionAs(reference.ReferencedMember);
-                    ReferenceCollection relays = RelayReferencingCompilerReferences(References.FindAll(matchedReferencing));
-                    foreach (var r in relays)
-                        newCollection.Include(r.ReferencedMember, r.ReferencingMember, r.Count);
-                }
+                else newCollection.Include(r);
             }
             return newCollection;
         }

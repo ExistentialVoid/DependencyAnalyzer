@@ -5,6 +5,17 @@ namespace DependencyAnalyzer
 {
     internal sealed class ReferenceCollection : List<Reference>
     {
+        public ReferenceCollection() { }
+        /// <summary>
+        /// Copy constructor
+        /// </summary>
+        /// <param name="collection"></param>
+        public ReferenceCollection(ReferenceCollection collection)
+        {
+            foreach (var item in collection) Add(new(item.ReferencingMember, item.ReferencedMember, item.Count));
+        }
+
+
         /// <summary>
         /// Increase the occurance of a reference, or add if a matching one doesn't exist.
         /// </summary>
@@ -16,16 +27,12 @@ namespace DependencyAnalyzer
             bool referenceMatch(Reference r) =>
                 r.ReferencedMember.HasSameMetadataDefinitionAs(referencedMember) &&
                 r.ReferencingMember.HasSameMetadataDefinitionAs(referencingMember);
-            if (base.Exists(referenceMatch))
-            {
-                Reference R = base.Find(referenceMatch);
-                R.Count += count;
-            }
-            else
-            {
-                base.Add(new Reference(referencingMember, referencedMember, count));
-            }
+            Reference? R = base.Find(referenceMatch);
+
+            if (R is not null) R.Count += count;
+            else base.Add(new Reference(referencingMember, referencedMember, count));
         }
+        public void Include(Reference item) => Include(item.ReferencedMember, item.ReferencingMember, item.Count);
         /// <summary>
         /// Decrease the occurance of a reference, or remove if no remaining occurances.
         /// </summary>
@@ -37,12 +44,14 @@ namespace DependencyAnalyzer
             bool referenceMatch(Reference r) =>
                 r.ReferencedMember.HasSameMetadataDefinitionAs(referencedMember) &&
                 r.ReferencingMember.HasSameMetadataDefinitionAs(referencingMember);
-            if (base.Exists(referenceMatch))
+            Reference? R = base.Find(referenceMatch);
+
+            if (R is not null)
             {
-                Reference R = base.Find(referenceMatch);
                 R.Count -= count;
                 if (count == 0 || R.Count == 0) base.Remove(R);
             }
         }
+        public void Exclude(Reference item) => Exclude(item.ReferencedMember, item.ReferencingMember, item.Count);
     }
 }

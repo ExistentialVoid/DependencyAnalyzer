@@ -14,10 +14,10 @@ namespace DependencyAnalyzer
         /// <summary>
         /// The member being referenced
         /// </summary>
-        MemberInfo ReferencedMember { get; set; }
+        MemberInfo ReferencedMember { get; }
         /// <summary>
         /// The member doing the referencing
         /// </summary>
-        MemberInfo ReferencingMember { get; set; }
+        MemberInfo ReferencingMember { get; }
     }
 }
