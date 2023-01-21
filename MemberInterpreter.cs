@@ -22,7 +22,7 @@ namespace DependencyAnalyzer
         /// 
         /// </summary>
         /// <param name="types">All types to be considered</param>
-        public MemberInterpreter(List<Type> types, TextWriter? log = null)
+        public MemberInterpreter(List<Type> types, TextWriter? log)
         {
             Log = log;
             Types = types;

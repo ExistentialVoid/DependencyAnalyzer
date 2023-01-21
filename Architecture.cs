@@ -49,59 +49,29 @@ namespace DependencyAnalyzer
                 foreach (MemberInfo m in t.GetMembers(Filter))
                 {
                     List<MemberInfo> referencedMembers = interpreter.GetReferencedMembers(m);
-                    referencedMembers.ForEach(r => References.Include(r, m));
+                    referencedMembers.ForEach(r => References.Add(new Reference(m, r, 1)));
                 }
             }
         }
-        public IList<IReference> Results() => new List<IReference>(References);
         public IList<IReference> Results(IReferenceFilter filter)
         {
             ReferenceCollection references = new(References);
-
-            if (!filter.IncludeSiblingReferences)
-            {
-                foreach (Reference r in new List<Reference>(references))
-                {
-                    // compare parents
-                    Type? p1 = r.ReferencedMember is TypeInfo T1 ? T1 : r.ReferencedMember.DeclaringType;
-                    Type? p2 = r.ReferencingMember is TypeInfo T2 ? T2 : r.ReferencingMember.DeclaringType;
-                    if (p1 is Type && p2 is Type && p1.HasSameMetadataDefinitionAs(p2)) 
-                        references.Exclude(r);
-                }
-            }
-
-            if (!filter.IncludeTypeReferences)
-            {
-                foreach (Reference r in new List<Reference>(references))
-                    if (r.ReferencedMember is TypeInfo || r.ReferencingMember is TypeInfo) 
-                        references.Exclude(r);
-            }
 
             if (filter.SimplifyCompilerReferences)
             {
                 foreach (Reference r in new List<Reference>(references))
                 {
-                    string referencedFullname = r.GetReferencedMemberFullName();
-                    string referencingFullname = r.GetReferencingMemberFullName();
-                    if (referencedFullname.Contains('<') && !referencingFullname.Contains('<'))
+                    if (r.ReferencedMemberIsCompilerGenerated && !r.ReferencingMemberIsCompilerGenerated)
                     {
-                        references.Exclude(r);
-
-                        bool matchedReferenced(Reference reference) =>
-                            reference.ReferencingMember.HasSameMetadataDefinitionAs(r.ReferencedMember);
-                        List<Reference> matchedRefernces = References.FindAll(matchedReferenced);
-                        ReferenceCollection relays = RelayReferencedCompilerReferences(matchedRefernces);
-
-                        foreach (var relay in relays) references.Include(relay);
+                        references.Remove(r);
+                        ReferenceCollection relays = RelayReferencedCompilerReferences(r.ReferencedMember);
+                        foreach (Reference relay in relays)
+                        {
+                            Reference quasiReference = new(r.ReferencingMember, relay.ReferencedMember, relay.Count);
+                            references.Add(quasiReference);
+                        }
                     }
-                }
-                // Remove compiler references
-                foreach (Reference r in new List<Reference>(references))
-                {
-                    string referencedFullname = r.GetReferencedMemberFullName();
-                    string referencingFullname = r.GetReferencingMemberFullName();
-                    if (referencedFullname.Contains('<') || referencingFullname.Contains('<'))
-                        references.Exclude(r.ReferencedMember, r.ReferencingMember, 0);
+                    else if (r.ReferencedMemberIsCompilerGenerated || r.ReferencingMemberIsCompilerGenerated) references.Remove(r);
                 }
             }
 
@@ -116,8 +86,9 @@ namespace DependencyAnalyzer
                             (m.DeclaringType?.HasSameMetadataDefinitionAs(r.ReferencedMember.DeclaringType) ?? false));
                         if (property is not null)
                         {
-                            references.Include(property, r.ReferencingMember, r.Count);
-                            references.Exclude(r);
+                            Reference quasiReference = new(r.ReferencingMember, property, r.Count);
+                            references.Add(quasiReference);
+                            references.Remove(r);
                         }
                     }
                     if (r.ReferencingMember.Name.Length > 4 && r.ReferencingMember.Name[1..4].Equals("et_"))
@@ -127,30 +98,50 @@ namespace DependencyAnalyzer
                             (m.DeclaringType?.HasSameMetadataDefinitionAs(r.ReferencingMember.DeclaringType) ?? false));
                         if (property is not null)
                         {
-                            references.Include(r.ReferencedMember, property, r.Count);
-                            references.Exclude(r);
+                            Reference quasiReference = new(property, r.ReferencedMember, r.Count);
+                            references.Add(quasiReference);
+                            references.Remove(r);
                         }
                     }
                 }
             }
 
+            if (!filter.IncludeSiblingReferences)
+            {
+                foreach (Reference r in new List<Reference>(references))
+                {
+                    // compare parents
+                    Type? p1 = r.ReferencedMember is TypeInfo T1 ? T1 : r.ReferencedMember.DeclaringType;
+                    Type? p2 = r.ReferencingMember is TypeInfo T2 ? T2 : r.ReferencingMember.DeclaringType;
+                    if (p1 is Type && p2 is Type && p1.HasSameMetadataDefinitionAs(p2)) 
+                        references.Remove(r);
+                }
+            }
+
+            if (!filter.IncludeTypeReferences)
+            {
+                foreach (Reference r in new List<Reference>(references))
+                    if (r.ReferencedMember is TypeInfo || r.ReferencingMember is TypeInfo) references.Remove(r);
+            }
+
             return new List<IReference>(references);
         }
-        private ReferenceCollection RelayReferencedCompilerReferences(List<Reference> collection)
+        private ReferenceCollection RelayReferencedCompilerReferences(MemberInfo compilerReferencedMember)
         {
-            ReferenceCollection newCollection = new();
-            foreach (var r in collection)
-            {
-                if (r.GetReferencedMemberFullName().Contains('<'))
-                {
-                    bool matchedReferenced(Reference reference) =>
-                        reference.ReferencingMember.HasSameMetadataDefinitionAs(r.ReferencedMember);
-                    List<Reference> matchedRefernces = References.FindAll(matchedReferenced);
-                    ReferenceCollection relays = RelayReferencedCompilerReferences(matchedRefernces);
+            if (compilerReferencedMember.MemberType == MemberTypes.Constructor) return new();
 
-                    foreach (var relay in relays) newCollection.Include(relay);
+            ReferenceCollection newCollection = new();
+            bool matchedReferenced(Reference r) => r.ReferencingMember.HasSameMetadataDefinitionAs(compilerReferencedMember);
+            List<Reference> matchedReferences = References.FindAll(matchedReferenced);
+
+            foreach (Reference r in matchedReferences)
+            {
+                if (r.ReferencedMemberIsCompilerGenerated)
+                {
+                    ReferenceCollection relays = RelayReferencedCompilerReferences(r.ReferencedMember);
+                    foreach (var relay in relays) newCollection.Add(relay);
                 }
-                else newCollection.Include(r);
+                else newCollection.Add(r);
             }
             return newCollection;
         }
