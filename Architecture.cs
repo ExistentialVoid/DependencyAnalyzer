@@ -53,6 +53,11 @@ namespace DependencyAnalyzer
                 }
             }
         }
+        /// <summary>
+        /// Get dependency information.
+        /// </summary>
+        /// <param name="filter">Adjustments to reported dependencies</param>
+        /// <returns>A list of mutually excluseive dependecies</returns>
         public IList<IReference> Results(IReferenceFilter filter)
         {
             ReferenceCollection references = new(References);
@@ -126,6 +131,11 @@ namespace DependencyAnalyzer
 
             return new List<IReference>(references);
         }
+        /// <summary>
+        /// Extract compiler member's references to non-compiler members in a waterfall fashion
+        /// </summary>
+        /// <param name="compilerReferencedMember">The compiler member whose references will be analyzed</param>
+        /// <returns>A list of non-compiler referenced members</returns>
         private ReferenceCollection RelayReferencedCompilerReferences(MemberInfo compilerReferencedMember)
         {
             if (compilerReferencedMember.MemberType == MemberTypes.Constructor) return new();

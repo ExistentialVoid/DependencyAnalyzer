@@ -1,7 +1,7 @@
 ﻿namespace DependencyAnalyzer
 {
     /// <summary>
-    /// Provides a set of simple logical properties that can be applied to references
+    /// Customizable object that specifies adjustments to reported dependencies
     /// </summary>
     public interface IReferenceFilter
     {
